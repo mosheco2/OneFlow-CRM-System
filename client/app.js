@@ -3,10 +3,10 @@ async function loadCRM() {
 
     try {
         const response = await fetch("https://oneflow-crm-system.onrender.com/api/status");
-        const data = await response.json();
+        const text = await response.text();
 
         document.getElementById("app").innerText =
-            "OneFlow CRM Online → " + data.status;
+            "OneFlow CRM Online → " + text;
     } catch (err) {
         document.getElementById("app").innerText =
             "Error loading CRM API";
