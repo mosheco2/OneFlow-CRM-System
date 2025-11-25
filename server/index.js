@@ -1,31 +1,35 @@
 import express from "express";
-import cors from "cors";
+import pkg from "pg";
+const { Client } = pkg;
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-// ברירת מחדל
+const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
+
+client.connect()
+    .then(() => console.log("Connected to OneFlow CRM Database"))
+    .catch(err => console.error("DB Connection Error:", err));
+
 app.get("/", (req, res) => {
-  res.send("OneFlow CRM API is running");
+    res.send("OneFlow CRM API is running");
 });
 
-// נתיב ה־API שהקליינט שלך מבקש
-app.get("/api", (req, res) => {
-  res.send("API Connected Successfully");
+app.get("/api", async (req, res) => {
+    res.send("API Connected Successfully");
 });
 
-// נתיב פינג (אופציונלי)
-app.get("/ping", (req, res) => {
-  res.json({ status: "ok", message: "API Connected Successfully" });
+// check DB status
+app.get("/api/db-status", async (req, res) => {
+    try {
+        const result = await client.query("SELECT NOW()");
+        res.json({ ok: true, time: result.rows[0].now });
+    } catch (err) {
+        res.json({ ok: false, error: err.message });
+    }
 });
 
-// סטטוס API
-app.get("/api/status", (req, res) => {
-  res.json({ status: "API Connected Successfully" });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Server is running on port " + PORT);
-});
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log("Server running on port", PORT));
