@@ -19,3 +19,6 @@ app.listen(PORT, () => {
 app.get("/ping", (req, res) => {
     res.json({ status: "ok", message: "API Connected Successfully" });
 });
+app.get("/api/status", (req, res) => {
+    res.json({ status: "API Connected Successfully" });
+});
