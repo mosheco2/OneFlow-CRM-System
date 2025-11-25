@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: oneflow-crm-api
+    rootDir: server
+    env: node
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    plan: free
+    region: oregon
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 18
