@@ -1,89 +1,79 @@
 import express from "express";
 import pg from "pg";
-import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 import cors from "cors";
 
-dotenv.config();
+// ENV from Render
+const connectionString = process.env.DATABASE_URL;
 
+// Create DB client
+const db = new pg.Client({ connectionString });
+
+// App
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-const pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: false
-});
-
-// -------------------------
-// DB INIT – יצירת טבלאות
-// -------------------------
-async function initDB() {
-    console.log("🔧 Initializing database...");
-
-    // יצירת טבלת LEADS
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS leads (
-            id SERIAL PRIMARY KEY,
-            full_name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            phone TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
-        );
-    `);
-
-    console.log("✅ Leads table is ready");
+// Load SQL schema on startup
+async function initDatabase() {
+    try {
+        const schemaPath = path.join(process.cwd(), "server", "db.sql");
+        const schema = fs.readFileSync(schemaPath, "utf-8");
+        await db.query(schema);
+        console.log("Database initialized ✔️");
+    } catch (err) {
+        console.error("Error loading DB schema:", err);
+    }
 }
 
-// -------------------------
-// API ROUTES
-// -------------------------
-
-// בסיס – לבדוק שהAPI עובד
+// Routes
 app.get("/api", (req, res) => {
     res.send("OneFlow CRM API is running");
 });
 
-// בדיקת סטטוס
-app.get("/api/status", async (req, res) => {
-    try {
-        const test = await pool.query("SELECT NOW()");
-        res.json({
-            status: "Connected",
-            time: test.rows[0].now
-        });
-    } catch (err) {
-        res.status(500).json({ status: "DB Error", error: err.message });
+// Create account
+app.post("/api/register", async (req, res) => {
+    const { email, password, full_name } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ error: "Missing fields" });
     }
-});
-
-// קבלת כל הלידים
-app.get("/api/leads", async (req, res) => {
-    const result = await pool.query("SELECT * FROM leads ORDER BY id DESC");
-    res.json(result.rows);
-});
-
-// הוספת ליד חדש
-app.post("/api/leads", async (req, res) => {
-    const { full_name, email, phone } = req.body;
 
     try {
-        const result = await pool.query(
-            `INSERT INTO leads (full_name, email, phone)
-             VALUES ($1, $2, $3)
-             RETURNING *`,
-            [full_name, email, phone]
+        const result = await db.query(
+            "INSERT INTO users (email, password, full_name) VALUES ($1,$2,$3) RETURNING id,email,full_name",
+            [email, password, full_name || null]
         );
 
-        res.json({ success: true, lead: result.rows[0] });
-    } catch (err) {
-        res.status(400).json({ success: false, error: err.message });
+        res.json({ success: true, user: result.rows[0] });
+    } catch (e) {
+        res.status(400).json({ error: e.message });
     }
 });
 
-// -------------------------
-const PORT = process.env.PORT || 10000;
+// Login
+app.post("/api/login", async (req, res) => {
+    const { email, password } = req.body;
 
-app.listen(PORT, async () => {
-    console.log(`🚀 Server is running on port ${PORT}`);
-    await initDB(); // ⬅️ פה נבנית הטבלה אוטומטית
+    const q = await db.query("SELECT * FROM users WHERE email=$1", [email]);
+
+    if (q.rows.length === 0) {
+        return res.status(400).json({ error: "User not found" });
+    }
+
+    const user = q.rows[0];
+
+    if (user.password !== password) {
+        return res.status(400).json({ error: "Wrong password" });
+    }
+
+    res.json({ success: true, user: { id: user.id, email: user.email, full_name: user.full_name } });
+});
+
+// Start server
+app.listen(10000, async () => {
+    await db.connect();
+    await initDatabase();
+    console.log("OneFlow CRM API is running on port 10000");
 });
