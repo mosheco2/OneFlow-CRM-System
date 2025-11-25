@@ -1,79 +1,62 @@
 import express from "express";
-import pg from "pg";
-import fs from "fs";
-import path from "path";
+import pkg from "pg";
 import cors from "cors";
 
-// ENV from Render
-const connectionString = process.env.DATABASE_URL;
+const { Pool } = pkg;
 
-// Create DB client
-const db = new pg.Client({ connectionString });
-
-// App
 const app = express();
-app.use(express.json());
 app.use(cors());
+app.use(express.json());
 
-// Load SQL schema on startup
-async function initDatabase() {
-    try {
-        const schemaPath = path.join(process.cwd(), "server", "db.sql");
-        const schema = fs.readFileSync(schemaPath, "utf-8");
-        await db.query(schema);
-        console.log("Database initialized ✔️");
-    } catch (err) {
-        console.error("Error loading DB schema:", err);
-    }
-}
+// DATABASE CONNECTION
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
 
-// Routes
-app.get("/api", (req, res) => {
+// TEST API
+app.get("/", (req, res) => {
     res.send("OneFlow CRM API is running");
 });
 
-// Create account
-app.post("/api/register", async (req, res) => {
-    const { email, password, full_name } = req.body;
-
-    if (!email || !password) {
-        return res.status(400).json({ error: "Missing fields" });
-    }
-
+// GET ALL USERS
+app.get("/api/users", async (req, res) => {
     try {
-        const result = await db.query(
-            "INSERT INTO users (email, password, full_name) VALUES ($1,$2,$3) RETURNING id,email,full_name",
-            [email, password, full_name || null]
+        const result = await pool.query("SELECT * FROM users ORDER BY id DESC");
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Error fetching users:", err);
+        res.status(500).json({ error: "Database error" });
+    }
+});
+
+// CREATE USER (REGISTER)
+app.post("/api/register", async (req, res) => {
+    try {
+        const { name, email } = req.body;
+
+        if (!name || !email) {
+            return res.status(400).json({ error: "Missing name or email" });
+        }
+
+        const insert = await pool.query(
+            "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *",
+            [name, email]
         );
 
-        res.json({ success: true, user: result.rows[0] });
-    } catch (e) {
-        res.status(400).json({ error: e.message });
+        res.json({
+            message: "User registered successfully",
+            user: insert.rows[0]
+        });
+
+    } catch (err) {
+        console.error("Registration error:", err);
+        res.status(500).json({ error: "Internal server error" });
     }
 });
 
-// Login
-app.post("/api/login", async (req, res) => {
-    const { email, password } = req.body;
-
-    const q = await db.query("SELECT * FROM users WHERE email=$1", [email]);
-
-    if (q.rows.length === 0) {
-        return res.status(400).json({ error: "User not found" });
-    }
-
-    const user = q.rows[0];
-
-    if (user.password !== password) {
-        return res.status(400).json({ error: "Wrong password" });
-    }
-
-    res.json({ success: true, user: { id: user.id, email: user.email, full_name: user.full_name } });
-});
-
-// Start server
-app.listen(10000, async () => {
-    await db.connect();
-    await initDatabase();
-    console.log("OneFlow CRM API is running on port 10000");
+// START SERVER
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+    console.log("Server running on port " + PORT);
 });
