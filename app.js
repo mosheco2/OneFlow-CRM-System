@@ -1,7 +1,9 @@
 /**
  * ============================================================================
  * ONEFLOW 360 - CLIENT SIDE (app.js)
- * VERSION: V305.0 (FIX: Double Entry Prevention + VAT UI)
+ * VERSION: V305.1 (VAT UPDATE)
+ * 1. FIX: VAT Rate set to 18%.
+ * 2. FIX: Detailed VAT breakdown in Quote Preview.
  * ============================================================================
  */
 
@@ -9,7 +11,7 @@
 
 let GAS_URL = localStorage.getItem('oneflow_gas_url') || ""; 
 const START_DOC_NUM = 135250;
-const VAT_RATE = 0.18; // מע"מ עודכן ל-18%
+const VAT_RATE = 0.18; // עודכן ל-18% מע"מ
 let activeClientId = null;
 let quoteItems = [];        
 let hoursScopeLines = [];   
@@ -1394,25 +1396,26 @@ window.generatePreview = function() {
             totHtml += `<div class="total-row"><span>סה"כ הקמה:</span><span>${t.setup.toLocaleString()} ₪</span></div>`;
             if (t.discPercent > 0) totHtml += `<div class="total-row" style="color:red;"><span>הנחה (${t.discPercent}%):</span><span>-${(t.setup - t.setupAfterDisc).toLocaleString()} ₪</span></div>`;
             
-            // הוספנו תצוגה מפורשת לפני מע"מ
-            totHtml += `<div class="total-row" style="font-weight:bold; border-top:1px solid #eee; margin-top:5px; padding-top:5px;"><span>סה"כ לפני מע"מ:</span><span>${t.setupAfterDisc.toLocaleString()} ₪</span></div>`;
-            
-            // שורת מע"מ
-            totHtml += `<div class="total-row"><span>מע"מ (${VAT_RATE*100}%):</span><span>${vat.toLocaleString()} ₪</span></div>`;
-            
-            // סה"כ סופי כולל מע"מ
+            // --- VAT UPDATE SECTION START ---
+            totHtml += `<div class="total-row" style="font-weight:bold; border-top:1px solid #ccc; margin-top:5px; padding-top:5px;"><span>סה"כ לפני מע"מ:</span><span>${t.setupAfterDisc.toLocaleString()} ₪</span></div>`;
+            totHtml += `<div class="total-row"><span>מע"מ (${(VAT_RATE*100).toFixed(0)}%):</span><span>${vat.toLocaleString()} ₪</span></div>`;
             totHtml += `<div class="total-row" style="font-weight:bold; font-size:1.2em; border-top:2px solid #333; margin-top:5px; padding-top:5px;"><span>סה"כ לתשלום (כולל מע"מ):</span><span>${totalFinal.toLocaleString()} ₪</span></div>`;
+             // --- VAT UPDATE SECTION END ---
         }
         if (t.monthly > 0) {
             const monthlyVat = t.monthly * VAT_RATE;
             const monthlyFinal = t.monthly + monthlyVat;
             totHtml += `<div style="margin-top:15px; padding-top:10px; border-top:2px dashed #007bff; color:#0056b3;">
-                <div class="total-row" style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <div class="total-row" style="display:flex; justify-content:space-between;">
                     <span>שוטף חודשי (לפני מע"מ):</span>
-                    <span>${t.monthly.toLocaleString()} ₪</span>
+                    <strong>${t.monthly.toLocaleString()} ₪</strong>
                 </div>
-                <div class="total-row" style="display:flex; justify-content:space-between; font-weight:bold;">
-                    <span>סה"כ שוטף חודשי (כולל מע"מ):</span>
+                 <div class="total-row" style="display:flex; justify-content:space-between;">
+                    <span>מע"מ (${(VAT_RATE*100).toFixed(0)}%):</span>
+                    <span>${monthlyVat.toLocaleString()} ₪</span>
+                </div>
+                 <div class="total-row" style="display:flex; justify-content:space-between; font-weight:bold; border-top:1px solid #0056b3; margin-top:5px; padding-top:2px;">
+                    <span>סה"כ חודשי (כולל מע"מ):</span>
                     <strong>${monthlyFinal.toLocaleString()} ₪</strong>
                 </div>
             </div>`;
@@ -1544,4 +1547,803 @@ function renderFinanceInputBox() {
              <input type="date" id="inpNewFinForecast" title="צפי תשלום" style="flex:1;">
         </div>
 
-        <button id="btnSaveNewFin" class="btn btn-success" style="width:100%;">שמור תנועה</
+        <button id="btnSaveNewFin" class="btn btn-success" style="width:100%;">שמור תנועה</button>
+    </div>`;
+    
+    // Set default date
+    document.getElementById('inpNewFinDate').value = new Date().toISOString().split('T')[0];
+    
+    // Re-populate dropdown
+    updateQuoteLinkDropdown();
+    
+    // V305 FIX: Single clean binding using onclick to prevent duplicates
+    const btn = document.getElementById('btnSaveNewFin');
+    if(btn) {
+        btn.onclick = window.addNewFinanceItem;
+    }
+}
+
+function renderClientFinance() {
+    const list = document.getElementById('financeTableBody'); if(!list) return;
+    list.innerHTML = "";
+    
+    // Call the input box renderer (This fixes the 'Save Transaction' button issue)
+    renderFinanceInputBox();
+    
+    // V305 FIX: Ensure single binding if re-rendering occurs
+    setTimeout(() => {
+        const btn = document.getElementById('btnSaveNewFin');
+        if(btn) {
+             btn.onclick = window.addNewFinanceItem;
+        } else {
+            // Fallback for older HTML structures - find by text
+            const allBtns = document.getElementsByTagName("button");
+            for (let b of allBtns) {
+                if (b.innerText && b.innerText.includes("שמור תנועה")) {
+                    b.onclick = window.addNewFinanceItem;
+                }
+            }
+        }
+    }, 500);
+    
+    // FIX: More relaxed matching for alphanumeric IDs (like "Client_A" vs "Client A")
+    const cleanActive = cleanID(activeClientId);
+    
+    const fin = (data.finance || []).filter(f => {
+        let fID = cleanID(f.ClientID);
+        if (fID === cleanActive) return true;
+        if (/\d/.test(fID) && /\d/.test(cleanActive)) {
+             return fID.replace(/\D/g, '') === cleanActive.replace(/\D/g, '');
+        }
+        return false;
+    });
+    
+    // --- BANNER CALCULATIONS (Updated Logic V299.0) ---
+
+    // 1. Total Paid (Actual Revenue)
+    const totalPaid = fin.filter(f => f.Status === 'שולם')
+                          .reduce((sum, item) => sum + parseFloat(item.Amount || 0), 0);
+
+    // 2. Open Debt (Invoices Only)
+    const openDebt = fin.filter(f => 
+        ['ממתין לגביה', 'חשבונית יצאה', 'תשלום עתידי', 'אושרה'].includes(f.Status) && 
+        !String(f.DocType).includes('הצעת') && !String(f.DocType).includes('quote')
+    ).reduce((sum, item) => sum + parseFloat(item.Amount || 0), 0);
+
+    // 3. Quote Balance Calculation (Including Quotes - Paid Invoices)
+    let quoteBalance = 0;
+    
+    // Filter Quotes: Include both "Quote" and "Approved" status
+    const quotes = fin.filter(f => 
+        (String(f.DocType).includes('הצעת') || String(f.DocType).includes('quote')) && 
+        (f.Status === 'אושרה' || f.Status === 'הצעת מחיר')
+    );
+    
+    quotes.forEach(q => {
+        const qAmt = parseFloat(q.Amount || 0);
+        // Calculate linked PAID invoices for this specific quote
+        const linkedPaid = getLinkedPaidSum(q.TransID);
+        quoteBalance += Math.max(0, qAmt - linkedPaid);
+    });
+
+    // Update Badge
+    const badge = document.getElementById('clientRevenueBadge');
+    if(badge) badge.innerText = `סה"כ שולם: ${totalPaid.toLocaleString()} ₪ | חוב פתוח: ${openDebt.toLocaleString()} ₪`;
+
+    // Inject Summary Header inside the tab
+    let summaryDiv = document.getElementById('financeSummaryHeader');
+    if (!summaryDiv) {
+        summaryDiv = document.createElement('div');
+        summaryDiv.id = 'financeSummaryHeader';
+        summaryDiv.style.display = 'flex';
+        summaryDiv.style.gap = '15px';
+        summaryDiv.style.marginBottom = '15px';
+        summaryDiv.style.padding = '10px';
+        summaryDiv.style.background = '#f0f4c3';
+        summaryDiv.style.borderRadius = '6px';
+        const parent = list.closest('#mtab-finance');
+        if(parent) parent.insertBefore(summaryDiv, parent.firstChild);
+    }
+    
+    summaryDiv.innerHTML = `
+        <div style="flex:1; text-align:center; border-left:1px solid #ccc;">
+            <div style="font-size:12px; color:#555;">סה"כ הכנסות בפועל (שולם)</div>
+            <div style="font-size:18px; font-weight:bold; color:#2e7d32;">${totalPaid.toLocaleString()} ₪</div>
+        </div>
+        <div style="flex:1; text-align:center; border-left:1px solid #ccc;">
+            <div style="font-size:12px; color:#555;">חוב פתוח (חשבוניות)</div>
+            <div style="font-size:18px; font-weight:bold; color:#d32f2f;">${openDebt.toLocaleString()} ₪</div>
+        </div>
+        <div style="flex:1; text-align:center;">
+            <div style="font-size:12px; color:#555;">יתרת הצעות לחיוב</div>
+            <div style="font-size:18px; font-weight:bold; color:#ff9800;">${quoteBalance.toLocaleString()} ₪</div>
+        </div>
+    `;
+
+    // Bulk Save Buttons
+    if (!document.getElementById('btnBulkActionContainer')) {
+         const div = document.createElement('div');
+         div.id = 'btnBulkActionContainer';
+         div.style.marginTop = '10px';
+         div.style.display = 'flex';
+         div.style.gap = '10px';
+         
+         const btnSave = document.createElement('button');
+         btnSave.className = 'btn btn-primary btn-sm';
+         btnSave.innerText = '💾 שמור את כל השינויים בטבלה';
+         btnSave.style.flex = '1';
+         btnSave.onclick = saveAllFinanceChanges;
+         
+         const btnDel = document.createElement('button');
+         btnDel.className = 'btn btn-danger btn-sm';
+         btnDel.innerText = '🗑️ מחק מסומנים';
+         btnDel.style.flex = '0 0 150px';
+         btnDel.onclick = deleteSelectedFinanceItems;
+
+         div.appendChild(btnSave);
+         div.appendChild(btnDel);
+
+         list.closest('#mtab-finance').insertBefore(div, document.getElementById('financeList'));
+    }
+
+    const thead = list.closest('table').querySelector('thead tr');
+    if (thead && !thead.querySelector('.col-cb')) {
+        const th = document.createElement('th');
+        th.className = 'col-cb';
+        th.innerHTML = '<input type="checkbox" onchange="toggleAllFinance(this)">';
+        thead.insertBefore(th, thead.firstChild);
+    }
+
+    if(fin.length === 0) { list.innerHTML = "<tr><td colspan='11' style='text-align:center;'>אין תנועות</td></tr>"; return; }
+
+    fin.forEach(f => {
+        let displayDesc = f.Description || f.DocType;
+        let asmachtaDisplay = f.DocNum || f.InvoiceNum || ""; 
+        
+        if(f.LinkedDoc) {
+             const linkedQ = data.finance.find(q => q.TransID === f.LinkedDoc);
+             if(linkedQ) displayDesc += ` <span style='color:blue; font-size:11px;'>(מקושר להצעה #${linkedQ.DocNum})</span>`;
+        }
+        
+        let dateValue = parseDateISO(f.PaymentDate);
+        let forecastValue = parseDateISO(f.ForecastDate); 
+
+        list.innerHTML += `<tr data-id="${f.TransID}">
+            <td><input type="checkbox" class="fin-row-cb" value="${f.TransID}"></td>
+            <td><input type="date" class="fin-input-date" value="${dateValue}" style="width:110px;"></td>
+            <td><input type="number" class="fin-input-amount" value="${f.Amount}" style="width:80px;"></td>
+            <td><input type="text" class="fin-input-desc" value="${displayDesc.replace(/<[^>]*>/g, '')}" title="${displayDesc.replace(/<[^>]*>/g, '')}"></td>
+            <td><input type="text" class="fin-input-inv" value="${asmachtaDisplay}" style="width:80px;"></td>
+            <td><input type="date" class="fin-input-forecast" value="${forecastValue}" style="width:110px;"></td> 
+            <td>
+                <select class="fin-input-coltype" style="width:80px;">
+                    <option value="OneTime" ${f.CollectionType=='OneTime'?'selected':''}>חד פעמי</option>
+                    <option value="Recurring" ${f.CollectionType=='Recurring'?'selected':''}>שוטף</option>
+                    <option value="Manual" ${f.CollectionType=='Manual'?'selected':''}>ידני</option>
+                </select>
+            </td>
+            <td>
+                <select class="fin-input-method" style="width:90px;">
+                    <option ${f.PaymentMethod=='העברה בנקאית'?'selected':''}>העברה בנקאית</option>
+                    <option ${f.PaymentMethod=='אשראי'?'selected':''}>אשראי</option>
+                    <option ${f.PaymentMethod=='שיק'?'selected':''}>שיק</option>
+                    <option ${f.PaymentMethod=='מזומן'?'selected':''}>מזומן</option>
+                    <option ${f.PaymentMethod=='ביט/אפליקציה'?'selected':''}>ביט/אפליקציה</option>
+                </select>
+            </td>
+            <td>
+                <select class="fin-input-status">
+                    <option ${f.Status=='שולם'?'selected':''}>שולם</option>
+                    <option ${f.Status=='ממתין לגביה'?'selected':''}>ממתין לגביה</option>
+                    <option ${f.Status=='הצעת מחיר'?'selected':''}>הצעת מחיר</option>
+                    <option ${f.Status=='אושרה'?'selected':''}>אושרה</option>
+                    <option ${f.Status=='חשבונית יצאה'?'selected':''}>חשבונית יצאה</option>
+                    <option ${f.Status=='בוטל'?'selected':''}>בוטל</option>
+                </select>
+            </td>
+            <td>
+                <button class="btn btn-sm btn-primary" onclick="saveSingleFinanceRow('${f.TransID}')">💾</button>
+                <button class="btn-icon" onclick="openItemPopup('${f.TransID}')">👁️</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteFinanceItem('${f.TransID}')">X</button>
+            </td>
+        </tr>`;
+    });
+}
+
+// --- V261.0 Helper Functions ---
+window.toggleAllFinance = function(el) {
+    document.querySelectorAll('.fin-row-cb').forEach(cb => cb.checked = el.checked);
+}
+
+window.deleteSelectedFinanceItems = async function() {
+    const selected = document.querySelectorAll('.fin-row-cb:checked');
+    if(selected.length === 0) return alert("לא נבחרו שורות למחיקה");
+    if(!confirm(`האם למחוק ${selected.length} שורות מסומנות?`)) return;
+
+    showLoader();
+    try {
+        for(let cb of selected) {
+             await sendToGAS('deleteItem', { sheet: 'Finance_Log', idVal: cb.value, idCol: 'TransID' });
+        }
+        await refreshData(true);
+        showToast("השורות נמחקו בהצלחה");
+    } catch(e) { alert("שגיאה במחיקה: " + e.message); } finally { hideLoader(); }
+}
+
+// NEW FUNCTION ADDED: Add new finance item from Client Tab
+window.addNewFinanceItem = async function() {
+    if(!activeClientId) return alert("שגיאה: לא נבחר לקוח");
+    
+    // V305: Disable button to prevent double-click
+    const btn = document.getElementById('btnSaveNewFin');
+    if(btn) btn.disabled = true;
+
+    // FIX: Updated to match YOUR existing HTML IDs (based on image analysis)
+    // 1. Try to find the amount field
+    let amountEl = document.getElementById('inpFinAmount');
+    if (!amountEl) amountEl = document.getElementById('inpNewFinAmount'); // Fallback
+    
+    // 2. Try to find date
+    let dateEl = document.getElementById('inpFinDate');
+    if (!dateEl) dateEl = document.getElementById('inpNewFinDate'); // Fallback
+    
+    // 3. Try to find description / Title
+    let titleEl = document.getElementById('inpNewFinTitle');
+    let descEl = document.getElementById('inpFinDesc');
+    if (!descEl) descEl = document.getElementById('inpNewFinDesc'); // Fallback
+    
+    // 4. Try to find Reference / InvoiceNum
+    let refEl = document.getElementById('inpFinRef');
+    if (!refEl) refEl = document.getElementById('inpFinInvoice');
+    if (!refEl) refEl = document.getElementById('inpNewFinRef');
+    
+    // 5. Try to find Type
+    let typeEl = document.getElementById('inpFinType');
+    if (!typeEl) typeEl = document.getElementById('inpFinCollectionType');
+    
+    // 6. Try to find DocType
+    let docTypeEl = document.getElementById('inpFinDocType');
+    
+    // 7. Try to find Forecast
+    let forecastEl = document.getElementById('inpFinForecast');
+    
+    // Get values
+    const amount = amountEl ? amountEl.value : "";
+    const date = dateEl ? dateEl.value : "";
+    
+    // V304: Merge Title + Desc
+    const titleVal = titleEl ? titleEl.value : "";
+    const descVal = descEl ? descEl.value : "";
+    let finalDesc = titleVal;
+    if(descVal) finalDesc += (finalDesc ? " - " : "") + descVal;
+
+    const ref = refEl ? refEl.value : "";
+    const type = typeEl ? typeEl.value : "חד פעמי";
+    const docType = docTypeEl ? docTypeEl.value : "חשבונית מס";
+    const forecast = forecastEl ? forecastEl.value : "";
+    
+    // Check if Linked Quote
+    const linkQuoteEl = document.getElementById('inpFinLinkQuote');
+    const linkedDocID = linkQuoteEl ? linkQuoteEl.value : "";
+
+    // Validation
+    if(!amount || parseFloat(amount) === 0) {
+         if(btn) btn.disabled = false;
+         return alert("אנא הזן סכום");
+    }
+    if(!date) {
+         if(btn) btn.disabled = false;
+         return alert("אנא הזן תאריך");
+    }
+    if(!finalDesc) {
+         if(btn) btn.disabled = false;
+         return alert("אנא הזן שם תנועה");
+    }
+
+    const client = data.clients.find(c => cleanID(c.ClientID) === activeClientId);
+    const clientName = client ? client['Company Name'] : "לא ידוע";
+
+    showLoader();
+    try {
+        const payload = {
+            TransID: 'T' + Date.now(),
+            ClientID: activeClientId,
+            ClientName: clientName,
+            DocType: docType,
+            Description: finalDesc, // Merged
+            Amount: parseFloat(amount),
+            PaymentDate: date,
+            ForecastDate: forecast || date, 
+            InvoiceNum: ref,
+            DocNum: ref,
+            CollectionType: (type === 'חד פעמי' || type === 'OneTime') ? 'OneTime' : 'Recurring', 
+            Status: 'ממתין לגביה', 
+            PaymentMethod: 'העברה בנקאית',
+            LinkedDoc: linkedDocID, // Save Link
+            ItemsJSON: '[]'
+        };
+
+        await sendToGAS('addFinance', payload);
+        
+        // Reset Inputs
+        if (amountEl) amountEl.value = "";
+        if (titleEl) titleEl.value = "";
+        if (descEl) descEl.value = "";
+        if (refEl) refEl.value = "";
+        
+        await refreshData(true);
+        showToast("תנועה חדשה נוספה בהצלחה!");
+    } catch(e) {
+        alert("שגיאה בשמירה: " + e.message);
+    } finally {
+        if(btn) btn.disabled = false;
+        hideLoader();
+    }
+};
+
+// FIX #3 (V271.0): Added extra safety checks for missing 'oldRow' or 'row' elements
+// V299.0 UPDATE: Optimistic Update to prevent date reset
+window.saveSingleFinanceRow = async function(id) {
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    if(!row) {
+        console.error(`Row with ID ${id} not found in DOM.`);
+        return;
+    }
+    
+    // Check if we are in Finance Table (detailed inputs) or Dashboard (some might be missing)
+    const elDate = row.querySelector('.fin-input-date');
+    const elAmount = row.querySelector('.fin-input-amount');
+    const elDesc = row.querySelector('.fin-input-desc');
+    const elInv = row.querySelector('.fin-input-inv');
+    const elForecast = row.querySelector('.fin-input-forecast');
+    const elColType = row.querySelector('.fin-input-coltype');
+    const elMethod = row.querySelector('.fin-input-method');
+    const elStatus = row.querySelector('.fin-input-status');
+
+    showLoader();
+    try {
+        const oldRow = data.finance.find(f => f.TransID === id);
+        
+        if(!oldRow) {
+             throw new Error(`Item ${id} not found in local data. Please refresh.`);
+        }
+
+        // If element exists, take value. If not (Dashboard), keep old value.
+        // FIX #4: Optional chaining to prevent "reading 'value' of null"
+        const newItem = {
+            ...oldRow,
+            PaymentDate: elDate?.value || oldRow.PaymentDate,
+            Amount: elAmount?.value || oldRow.Amount,
+            Description: elDesc?.value || oldRow.Description,
+            InvoiceNum: elInv?.value || oldRow.InvoiceNum,
+            DocNum: elInv?.value || oldRow.DocNum, 
+            ForecastDate: elForecast?.value || oldRow.ForecastDate,
+            CollectionType: elColType?.value || oldRow.CollectionType,
+            PaymentMethod: elMethod?.value || oldRow.PaymentMethod,
+            Status: elStatus?.value || oldRow.Status
+        };
+
+        // 1. Send update to server (delete old, add new to simulate update)
+        await sendToGAS('deleteItem', { sheet: 'Finance_Log', idVal: id, idCol: 'TransID' });
+        // Generate new ID for the new item to avoid conflicts? No, keep ID for now or it breaks row.
+        // Actually, GAS usually appends. Better to keep ID if your backend supports update.
+        // Assuming Delete+Add pattern:
+        newItem.TransID = 'T' + Date.now(); 
+        await sendToGAS('addFinance', newItem);
+        
+        // 2. OPTIMISTIC UPDATE: Update local data immediately so UI doesn't revert
+        const index = data.finance.findIndex(f => f.TransID === id);
+        if (index !== -1) {
+            data.finance[index] = newItem; // Replace in local memory
+        }
+        
+        // 3. Re-render ONLY the specific row or do nothing (let user see change)
+        // We DO NOT call refreshData(true) here to avoid the race condition reset.
+        showToast("שורה עודכנה ונשמרה!");
+        
+        // Optional: Background refresh after 3.5 seconds (V301 Fix: Increased Timeout)
+        setTimeout(() => refreshData(true), 3500);
+
+    } catch(e) { console.error(e); alert(e.message); } finally { hideLoader(); }
+};
+
+window.saveAllFinanceChanges = async function() {
+    if(!confirm("האם לשמור את כל השינויים בטבלה?")) return;
+    const rows = document.querySelectorAll('#financeTableBody tr');
+    showLoader();
+    try {
+        for(let row of rows) {
+             const id = row.getAttribute('data-id');
+             const oldRow = data.finance.find(f => f.TransID === id);
+             if(!oldRow) continue;
+
+             const newValAmt = row.querySelector('.fin-input-amount').value;
+             const newValStatus = row.querySelector('.fin-input-status').value;
+             const newValDate = row.querySelector('.fin-input-date').value;
+             const newValRef = row.querySelector('.fin-input-inv').value;
+             const oldDate = parseDateISO(oldRow.PaymentDate);
+
+             if(oldRow.Amount != newValAmt || oldRow.Status != newValStatus || oldDate != newValDate || oldRow.InvoiceNum != newValRef) { 
+                  await saveSingleFinanceRow(id); 
+             }
+        }
+        hideLoader();
+        showToast("תהליך שמירה הסתיים");
+    } catch(e) { hideLoader(); }
+}
+
+// --- 11. Dashboard Logic (V262.0 UPDATE) ---
+
+function renderDashboard() {
+    const now = new Date();
+    const curMonth = now.getMonth();
+    const curYear = now.getFullYear();
+
+    // 1. Iterations
+    let activeIterCount = 0;
+    data.clients.forEach(c => {
+        let isClientActive = false;
+        // Check Live Column
+        let liveS = c.Iter1_Status_Live || "";
+        if (liveS && !['סיום', 'הושלם', 'טרם התחיל'].includes(liveS)) {
+             isClientActive = true;
+        }
+        // Check JSON
+        if (!isClientActive && c.IterationsJSON) {
+            try {
+                const iterData = JSON.parse(c.IterationsJSON);
+                const hasActiveStep = Object.values(iterData).some(step =>
+                    step.status && !['סיום', 'הושלם', 'טרם התחיל'].includes(step.status)
+                );
+                if(hasActiveStep) isClientActive = true;
+            } catch(e) {}
+        }
+        if (isClientActive) activeIterCount++;
+    });
+
+    // 2. Finance Basics
+    const paidFin = data.finance.filter(f => f.Status === 'שולם');
+    let paidMonth = 0, paidYear = 0, lastYearSum = 0;
+    paidFin.forEach(f => {
+        const d = new Date(f.PaymentDate);
+        const amt = parseFloat(f.Amount||0);
+        if (d.getFullYear() === curYear) {
+            paidYear += amt;
+            if (d.getMonth() === curMonth) paidMonth += amt;
+        } else if (d.getFullYear() === curYear - 1) {
+            lastYearSum += amt;
+        }
+    });
+
+    // 3a. Open Invoices (Fix #4: Exclude Quotes, Exclude Approved)
+    const openInvoicesItems = data.finance.filter(f => 
+        ['ממתין לגביה', 'חשבונית יצאה', 'תשלום עתידי', 'אושרה'].includes(f.Status) && 
+        !String(f.DocType).includes('הצעת') && !String(f.DocType).toLowerCase().includes('quote')
+    );
+    const openInvoicesSum = openInvoicesItems.reduce((acc, f) => acc + parseFloat(f.Amount||0), 0);
+
+    // 3b. Quote Balance (Approved Quotes - Linked Invoices)
+    const approvedQuotes = data.finance.filter(f => 
+        (String(f.DocType).includes('הצעת') || String(f.DocType).includes('quote')) && 
+        (f.Status === 'אושרה' || f.Status === 'הצעת מחיר') 
+    );
+    let totalQuoteBalance = 0;
+    approvedQuotes.forEach(q => {
+        const qAmt = parseFloat(q.Amount || 0);
+        const linked = getLinkedPaidSum(q.TransID); // Sum ONLY paid
+        totalQuoteBalance += Math.max(0, qAmt - linked);
+    });
+
+    // 4. Collection Forecast (Fix #3 & #4)
+    // Fix #3: Sum only rows where Forecast Date is in CURRENT YEAR
+    const openDebts = data.finance.filter(f => ['ממתין לגביה', 'חשבונית יצאה', 'תשלום עתידי'].includes(f.Status));
+    
+    let collectionSum = 0; // Current Year Forecast
+    let nextYearSum = 0;   // Next Year Forecast
+    let collMonthTotal = 0; 
+
+    openDebts.forEach(f => {
+        const d = new Date(f.ForecastDate || f.PaymentDate); 
+        const amt = parseFloat(f.Amount||0);
+        
+        // Fix #4: Sum Unlinked Invoices + Quote Balance to avoid double count.
+        const isLinked = f.LinkedDoc && f.LinkedDoc.length > 5;
+        
+        if (!isLinked) {
+            if (d.getFullYear() === curYear) collectionSum += amt;
+            if (d.getFullYear() === curYear + 1) nextYearSum += amt;
+        }
+
+        if(d.getFullYear() === curYear && d.getMonth() === curMonth) {
+             collMonthTotal += amt;
+        }
+    });
+    
+    // Add Quote Balance to Forecast
+    // collectionSum += totalQuoteBalance; // REMOVED as per request (Total Collection should be Open Debts only)
+
+    // Recurring Logic
+    let recurringMonthly = 0;
+    data.clients.forEach(c => {
+        if (c.Status === 'לקוח שוטף' && parseFloat(c.RetainerAmount) > 0) {
+            recurringMonthly += parseFloat(c.RetainerAmount);
+        }
+    });
+    const monthsLeft = 12 - curMonth; 
+    const forecastYear = paidYear + collectionSum + (recurringMonthly * monthsLeft);
+    nextYearSum += (recurringMonthly * 12);
+
+    // 5. PIPE
+    const quotes = data.finance.filter(f => f.Status === 'הצעת מחיר');
+    const pipeSum = quotes.reduce((acc, f) => acc + parseFloat(f.Amount||0), 0);
+
+    // 6. Expenses
+    const exps = data.expenses || [];
+    let expMonth = 0, expYear = 0;
+    exps.forEach(e => {
+        const d = new Date(e.Date);
+        const amt = parseFloat(e.Amount||0);
+        if (d.getFullYear() === curYear) {
+            expYear += amt;
+            if (d.getMonth() === curMonth) expMonth += amt;
+        }
+    });
+    
+    const setupItems = data.finance.filter(f => (f.DocType.includes('הקמה') || f.Description.includes('הקמה')) && f.Status === 'שולם');
+    const setupYearSum = setupItems.reduce((acc, f) => acc + parseFloat(f.Amount||0), 0);
+
+    // Update UI (KPIs)
+    setText('kpi-iter-count', activeIterCount);
+    setText('kpi-open-invoices', openInvoicesSum.toLocaleString() + ' ₪'); 
+    setText('kpi-quote-balance', totalQuoteBalance.toLocaleString() + ' ₪'); 
+    setText('kpi-coll-month', collMonthTotal.toLocaleString() + ' ₪');
+
+    setText('kpi-paid-year', paidYear.toLocaleString() + ' ₪');
+    setText('kpi-paid-month', paidMonth.toLocaleString() + ' ₪');
+    setText('kpi-forecast-total', forecastYear.toLocaleString() + ' ₪');
+    setText('kpi-collection-year', collectionSum.toLocaleString() + ' ₪');
+    
+    setText('kpi-pipe', pipeSum.toLocaleString() + ' ₪');
+    setText('kpi-last-year', lastYearSum.toLocaleString() + ' ₪');
+    setText('kpi-next-year', nextYearSum.toLocaleString() + ' ₪');
+    setText('kpi-setup-year', setupYearSum.toLocaleString() + ' ₪');
+    
+    setText('kpi-rec-year', (recurringMonthly * monthsLeft).toLocaleString() + ' ₪');
+    setText('kpi-exp-month', expMonth.toLocaleString() + ' ₪');
+    setText('kpi-exp-year', expYear.toLocaleString() + ' ₪');
+    setText('kpi-flow-month', (paidMonth - expMonth).toLocaleString() + ' ₪');
+    setText('kpi-flow-year', (paidYear - expYear).toLocaleString() + ' ₪');
+
+    setText('kpi-collection-year', collectionSum.toLocaleString() + ' ₪');
+}
+
+window.filterDash = function(type, cardEl) {
+    document.querySelectorAll('.kpi-card').forEach(c => c.style.borderBottom = 'none');
+    if(cardEl) cardEl.style.borderBottom = '4px solid #333';
+    currentDashFilter = type;
+    renderDashboardTable();
+    const tableContainer = document.getElementById('dashTableContainer') || document.getElementById('dashTable');
+    if(tableContainer) tableContainer.scrollIntoView({behavior: 'smooth'});
+}
+
+function renderDashboardTable() {
+    const tbody = document.querySelector('#dashTable tbody');
+    const thead = document.querySelector('#dashTable thead');
+    if(!tbody || !thead) return;
+    
+    let isIterationMode = (currentDashFilter === 'iteration');
+    let iterHeader = isIterationMode ? `<th class="col-status">סטטוס איטרציה</th>` : ``;
+
+    thead.innerHTML = `<tr>
+        <th class="col-cb"><input type="checkbox" id="dashSelectAll" onchange="toggleAllDash(this)"></th>
+        <th class="col-date">תאריך</th>
+        <th class="col-hp">ח.פ</th>
+        <th class="col-client">לקוח</th>
+        ${iterHeader}
+        <th class="col-desc">תיאור/נושא</th>
+        <th class="col-amount">סכום (נטו)</th>
+        <th class="col-amount">ריטיינר</th>
+        <th class="col-type">סוג הכנסה</th>
+        <th class="col-method">אמצעי תשלום</th>
+        <th class="col-status">סטטוס</th>
+        <th class="col-action">פעולות</th>
+    </tr>`;
+
+    tbody.innerHTML = "";
+    
+    let rows = [];
+    const now = new Date();
+    const curMonth = now.getMonth();
+    const curYear = now.getFullYear();
+
+    let isClientMode = false;
+
+    if (currentDashFilter === 'open_invoices') {
+        rows = data.finance.filter(f => 
+             ['ממתין לגביה', 'חשבונית יצאה', 'תשלום עתידי', 'אושרה'].includes(f.Status) && 
+             !String(f.DocType).includes('הצעת') && !String(f.DocType).toLowerCase().includes('quote')
+        );
+    }
+    else if (currentDashFilter === 'quote_balance') {
+        // Corrected Logic: Only show quotes where balance > 0
+        rows = data.finance.filter(f => {
+            const isQuote = (String(f.DocType).includes('הצעת') || String(f.DocType).includes('quote'));
+            const isApproved = (f.Status === 'אושרה' || f.Status === 'הצעת מחיר');
+            if (isQuote && isApproved) {
+                 const balance = parseFloat(f.Amount) - getLinkedPaidSum(f.TransID);
+                 return balance > 0;
+            }
+            return false;
+        });
+    }
+    else if (currentDashFilter === 'iteration' || currentDashFilter === 'recurring' || currentDashFilter === 'next_year') {
+        isClientMode = true;
+        if(currentDashFilter === 'iteration') {
+            // FIX: Less aggressive filtering - show anyone working
+            rows = data.clients.filter(c => {
+                let isClientActive = false;
+                // Check Live Column
+                let liveS = c.Iter1_Status_Live || "";
+                if (liveS && !['סיום', 'הושלם', 'טרם התחיל'].includes(liveS)) {
+                     isClientActive = true;
+                }
+                // Check JSON for ANY active iteration
+                if (!isClientActive && c.IterationsJSON) {
+                    try {
+                        const iterData = JSON.parse(c.IterationsJSON);
+                        const hasActiveStep = Object.values(iterData).some(step =>
+                            // FIX: Logic changed to INCLUDE valid working statuses
+                            step.status && !['סיום', 'הושלם', 'טרם התחיל'].includes(step.status)
+                        );
+                        if(hasActiveStep) isClientActive = true;
+                    } catch(e) {}
+                }
+                return isClientActive;
+            });
+        } else {
+            rows = data.clients.filter(c => c.Status === 'לקוח שוטף');
+        }
+    } 
+    else {
+         if (currentDashFilter === 'forecast_year') {
+             rows = data.finance.filter(f => {
+                const y = new Date(f.PaymentDate).getFullYear();
+                const s = f.Status;
+                return y === curYear && ['שולם', 'אושרה', 'חשבונית יצאה', 'ממתין לגביה', 'תשלום עתידי'].includes(s);
+             });
+        }
+        else if (currentDashFilter === 'collection_year' || currentDashFilter === 'coll_month') {
+             let isMonth = currentDashFilter.includes('month');
+             rows = data.finance.filter(f => {
+                // FIXED: Include approved quotes in collection even if date differs, as long as balance exists
+                const d = new Date(f.ForecastDate || f.PaymentDate);
+                const y = d.getFullYear();
+                const m = d.getMonth();
+                
+                const isDebt = ['חשבונית יצאה', 'ממתין לגביה', 'תשלום עתידי'].includes(f.Status);
+                const isApprovedQuote = (f.Status === 'אושרה') && (String(f.DocType).includes('הצעת') || String(f.DocType).includes('quote'));
+                
+                // If it's a quote, check if balance > 0
+                if (isApprovedQuote) {
+                    const balance = parseFloat(f.Amount) - getLinkedPaidSum(f.TransID); // FIX: Balance = Quote - Paid
+                    if (balance > 0) return true; // Show regardless of date if debt exists
+                }
+
+                const matchDate = (y === curYear) && (!isMonth || m === curMonth);
+                return matchDate && (isDebt || isApprovedQuote);
+             });
+        }
+        else if (currentDashFilter.includes('paid_')) {
+            let isMonth = currentDashFilter.includes('month');
+            rows = data.finance.filter(f => f.Status === 'שולם' && new Date(f.PaymentDate).getFullYear() === curYear && (!isMonth || new Date(f.PaymentDate).getMonth() === curMonth));
+        }
+        else if (currentDashFilter === 'pipe') {
+            rows = data.finance.filter(f => f.Status === 'הצעת מחיר');
+        }
+        else if (currentDashFilter === 'setup_year') {
+             rows = data.finance.filter(f => (f.DocType.includes('הקמה') || f.Description.includes('הקמה')) && f.Status === 'שולם');
+        }
+    }
+
+    rows.forEach(r => {
+        let id = isClientMode ? r.ClientID : r.TransID;
+        let checkbox = `<td><input type="checkbox" class="dash-cb" value="${id}"></td>`;
+        let html = "";
+
+        if (isClientMode) {
+             let iterColHtml = "";
+            if (isIterationMode) {
+                // FIX: Look for LATEST active iteration, not just Iteration 1
+                let statusText = r.Iter1_Status_Live || "???";
+                try {
+                    const parsed = JSON.parse(r.IterationsJSON || "{}");
+                    // Iterate 1 to 5 to find the most relevant status
+                    for(let i=1; i<=5; i++) {
+                        let stepData = parsed[`iter_${i}`];
+                        if(stepData && stepData.status && !['טרם התחיל', 'סיום', 'הושלם'].includes(stepData.status)) {
+                            statusText = stepData.status;
+                        }
+                    }
+                } catch(e) {}
+                
+                iterColHtml = `<td><span style="background:#ff9800; color:white; font-size:11px; padding:4px 10px; border-radius:12px; font-weight:bold; white-space:nowrap; display:inline-block; min-width:80px; text-align:center;">${statusText}</span></td>`;
+            }
+
+            let statusOptionsHtml = CLIENT_STATUSES.map(s => 
+                `<option ${r.Status === s ? 'selected' : ''}>${s}</option>`
+            ).join('');
+
+            let descContent = (currentDashFilter === 'iteration') ? '-' : (r['Contact Person']||'-');
+
+            html = `<tr data-id="${r.ClientID}">
+                ${checkbox}
+                <td>-</td>
+                <td><input type="text" value="${r.HP||''}" onchange="quickUpdateClient('${r.ClientID}', 'HP', this.value)" style="width:80px;"></td>
+                <td style="font-weight:bold; cursor:pointer;" onclick="openClientModal('${r.ClientID}')">${r['Company Name']}</td>
+                ${iterColHtml}
+                <td>${descContent}</td>
+                <td>-</td>
+                <td><input type="number" value="${r.RetainerAmount||0}" onchange="quickUpdateClient('${r.ClientID}', 'RetainerAmount', this.value)" style="width:70px;"></td>
+                <td>
+                    <select onchange="quickUpdateClient('${r.ClientID}', 'Status', this.value)">
+                         ${statusOptionsHtml}
+                    </select>
+                </td>
+                <td>-</td>
+                <td>-</td>
+                <td>
+                    <button class="btn-icon" onclick="quickUpdateClient('${r.ClientID}', 'Status', document.querySelector('tr[data-id=\\'${r.ClientID}\\'] select').value)" title="שמור">💾</button>
+                    <button class="btn-icon" onclick="openClientModal('${r.ClientID}')">📂</button>
+                </td>
+            </tr>`;
+        } 
+        else {
+            let asmachta = r.DocNum || r.InvoiceNum || "";
+            
+            // --- FIX: Display Balance for Approved Quotes ---
+            let displayAmount = parseFloat(r.Amount);
+            let displayStyle = "";
+            let amountTitle = "סכום מקורי";
+            
+            // Logic: If Approved Quote, calculate remaining balance (Quote - PAID invoices)
+            if (r.Status === 'אושרה' && (String(r.DocType).includes('הצעת') || String(r.DocType).includes('quote'))) {
+                const linkedSum = getLinkedPaidSum(r.TransID);
+                const balance = Math.max(0, displayAmount - linkedSum);
+                
+                if (balance < displayAmount) {
+                    displayAmount = balance; // Show balance
+                    displayStyle = "color:#ff9800; font-weight:bold;";
+                    amountTitle = `יתרה לתשלום: ${balance.toLocaleString()} (מתוך ${parseFloat(r.Amount).toLocaleString()})`;
+                }
+            }
+
+            html = `<tr data-id="${r.TransID}">
+                ${checkbox}
+                <td><input type="date" class="fin-input-date" value="${parseDateISO(r.PaymentDate)}" onchange="quickUpdateFinance('${r.TransID}', 'PaymentDate', this.value)"></td>
+                <td><input type="text" class="fin-input-inv" value="${asmachta}" onchange="quickUpdateFinance('${r.TransID}', 'InvoiceNum', this.value)" style="width:60px;"></td>
+                <td style="cursor:pointer;" onclick="openClientModal('${r.ClientID}')">${r.ClientName}</td>
+                <td><input type="text" class="fin-input-desc" value="${r.Description||''}" onchange="quickUpdateFinance('${r.TransID}', 'Description', this.value)"></td>
+                <td><input type="number" class="fin-input-amount" value="${displayAmount}" title="${amountTitle}" style="width:80px; ${displayStyle}" onchange="quickUpdateFinance('${r.TransID}', 'Amount', this.value)"></td>
+                <td>-</td>
+                <td>${r.DocType}</td>
+                <td>-</td>
+                <td>
+                    <select class="fin-input-status" onchange="quickUpdateFinance('${r.TransID}', 'Status', this.value)">
+                        <option ${r.Status=='שולם'?'selected':''}>שולם</option>
+                        <option ${r.Status=='ממתין לגביה'?'selected':''}>ממתין לגביה</option>
+                        <option ${r.Status=='הצעת מחיר'?'selected':''}>הצעת מחיר</option>
+                        <option ${r.Status=='אושרה'?'selected':''}>אושרה</option>
+                        <option ${r.Status=='חשבונית יצאה'?'selected':''}>חשבונית יצאה</option>
+                        <option ${r.Status=='בוטל'?'selected':''}>בוטל</option>
+                    </select>
+                </td>
+                <td>
+                    <button class="btn-icon" onclick="saveSingleFinanceRow('${r.TransID}')" title="שמור">💾</button>
+                    <button class="btn-icon" onclick="openItemPopup('${r.TransID}')">👁️</button>
+                    <button class="btn-icon" style="color:red;" onclick="deleteFinanceItem('${r.TransID}')">X</button>
+                </td>
+            </tr>`;
+        }
+        tbody.innerHTML += html;
+    });
+}
