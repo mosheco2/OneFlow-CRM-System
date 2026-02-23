@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * ONEFLOW 360 - CLIENT SIDE (app.js)
- * VERSION: V306.0 (Print Formatting, Descriptions & General Notes)
+ * VERSION: V307.0 (View & Print Saved Quotes from CRM)
  * ============================================================================
  */
 
@@ -782,6 +782,64 @@ function renderClientNotes() {
     });
 }
 
+// ==========================================
+// פונקציה חדשה: טעינת הצעה קיימת למחולל והדפסה
+// ==========================================
+window.viewQuoteAsPDF = function(transId) {
+    const q = data.finance.find(f => f.TransID === transId);
+    if (!q) return alert("הצעה לא נמצאה במערכת");
+    
+    const client = data.clients.find(c => cleanID(c.ClientID) === cleanID(q.ClientID));
+    if (!client) return alert("לקוח לא נמצא");
+
+    // סגירת חלון לקוח ומעבר למחולל
+    closeModal();
+    switchView('generator', document.querySelector('.nav-btn[onclick*="generator"]'));
+
+    // אתחול נתונים בסיסיים במחולל
+    document.getElementById('inputClientName').value = client['Company Name'];
+    fillClientFromCRM();
+    document.getElementById('inputDocNum').value = q.DocNum || q.InvoiceNum || "";
+    document.getElementById('inputDate').value = parseDateISO(q.PaymentDate) || new Date().toISOString().split('T')[0];
+
+    // זיהוי סוג המסמך והתאמת התצוגה במחולל
+    let dType = 'product_quote';
+    if (String(q.DocType).includes('שעות') || q.DocType === 'hours_quote') dType = 'hours_quote';
+    if (String(q.DocType).includes('איטרציה') || q.DocType === 'iteration') dType = 'iteration';
+    document.getElementById('docType').value = dType;
+    
+    updateFormView();
+
+    // פיענוח הפריטים שנשמרו
+    try {
+        quoteItems = JSON.parse(q.ItemsJSON || "[]");
+    } catch(e) {
+        quoteItems = [];
+    }
+
+    // אם זה טקסט חופשי, עדכן את תיבת הטקסט
+    if (dType === 'hours_quote') {
+        document.getElementById('inputPasteQuote').value = quoteItems.map(i => i.name).join('\n');
+        parseQuotePaste();
+    } else if (dType === 'iteration') {
+        document.getElementById('inputPasteIter').value = quoteItems.map(i => i.name).join('\n');
+        parseIterationText();
+    }
+
+    // איפוס הנחה ל-0 כברירת מחדל (ניתן לעדכון ידני אח"כ)
+    if(document.getElementById('inputDiscountPercent')) {
+        document.getElementById('inputDiscountPercent').value = 0;
+    }
+
+    renderBuilderTable();
+
+    // הפעלה מיידית של חלון ההדפסה
+    setTimeout(() => {
+        generatePreview();
+    }, 150);
+};
+
+// עדכון פונקציית הטבלה של הצעות המחיר כדי שתפעיל את התצוגה
 function renderClientQuotes() {
     const tbody = document.getElementById('quotesTableBody');
     if(!tbody) return;
@@ -800,7 +858,6 @@ function renderClientQuotes() {
     }
 
     quotes.forEach(q => {
-        // Items logic
         let contentSummary = "פירוט...";
         try {
             const items = JSON.parse(q.ItemsJSON || "[]");
@@ -820,11 +877,14 @@ function renderClientQuotes() {
         tbody.innerHTML += `
             <tr>
                 <td>${parseDateISO(q.PaymentDate)}</td>
-                <td><a href="#" onclick="alert('פונקציית צפייה תתווסף בהמשך')">#${q.DocNum}</a></td>
+                <td><a href="#" onclick="viewQuoteAsPDF('${q.TransID}')" title="צפה בהצעה">#${q.DocNum}</a></td>
                 <td>${parseFloat(q.Amount).toLocaleString()} ₪</td>
                 <td>${statusSelect}</td>
                 <td style="font-size:11px; color:#555;">${contentSummary}</td>
-                <td><button class="btn btn-sm btn-danger" onclick="deleteFinanceItem('${q.TransID}')">X</button></td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="viewQuoteAsPDF('${q.TransID}')" title="הצג תצוגה מקדימה והדפס">🖨️ צפה</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteFinanceItem('${q.TransID}')">X</button>
+                </td>
             </tr>
         `;
     });
