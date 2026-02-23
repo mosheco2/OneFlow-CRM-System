@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OneFlow 360 - V306.0 (Print & Notes Updates)</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <style>
+        /* CSS RESET & BOX SIZING - קריטי למניעת גלישת תוכן */
+        * { box-sizing: border-box; }
+        
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; color: #333; overflow-x: hidden; }
+
+        /* Loader Z-Index Fix */
+        #loader { z-index: 99999999; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Sidebar Styling */
+        .sidebar { 
+            position: fixed; 
+            right: 0; 
+            top: 0; 
+            bottom: 0; 
+            width: 250px; 
+            background: #343a40; 
+            color: white; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            z-index: 1000; 
+            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+        }
+        
+        /* Main Content - FIX DASHBOARD CUTOFF */
+        .main-content { 
+            margin-right: 270px; /* Increased buffer */
+            padding: 20px; 
+            width: auto;
+            max-width: calc(100% - 270px);
+        }
+
+        .nav-btn { background: none; border: none; color: #ccc; text-align: right; padding: 12px; width: 100%; cursor: pointer; font-size: 16px; margin-bottom: 5px; border-radius: 4px; transition: all 0.2s; }
+        .nav-btn:hover, .nav-btn.active { background: #007bff; color: white; padding-right: 20px; }
+        
+        /* View Sections */
+        .view-section { display: none; animation: fadeIn 0.3s; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* MODAL FIXES - CRITICAL FOR DATA VISIBILITY */
+        .modal-overlay { 
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+            background: rgba(0,0,0,0.6); 
+            display: none; 
+            justify-content: center; align-items: center; 
+            z-index: 2000; 
+        }
+        .modal-content { 
+            background: white; 
+            width: 90%; 
+            max-width: 1100px; 
+            height: 90%; 
+            max-height: 90vh;
+            border-radius: 8px; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2); 
+            overflow: hidden; /* Keep header sticky */
+        }
+        .modal-header { 
+            padding: 15px 20px; 
+            background: #f8f9fa; 
+            border-bottom: 1px solid #dee2e6; 
+            display: flex; justify-content: space-between; align-items: center; 
+            flex-shrink: 0;
+        }
+        .modal-tabs { 
+            display: flex; 
+            background: #e9ecef; 
+            padding: 0 20px; 
+            border-bottom: 1px solid #dee2e6;
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+        .modal-tab { 
+            padding: 12px 25px; 
+            cursor: pointer; 
+            border-bottom: 3px solid transparent; 
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .modal-tab:hover { background: rgba(0,0,0,0.05); }
+        .modal-tab.active { border-bottom: 3px solid #007bff; background: white; color: #007bff; font-weight: bold; }
+        
+        /* TAB CONTENT FIX */
+        .tab-content { 
+            padding: 25px; 
+            overflow-y: auto; 
+            flex-grow: 1; /* Ensures it fills the remaining height */
+            display: none; 
+            background: #fff;
+        }
+        .tab-content.active { 
+            display: block !important; 
+        }
+
+        /* Form Grid System */
+        .form-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); 
+            gap: 20px; 
+        }
+
+        /* KPI Cards */
+        .kpi-container { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+            gap: 20px; 
+            margin-bottom: 30px; 
+        }
+        .kpi-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-top: 4px solid #ccc; cursor: pointer; transition: transform 0.2s; position: relative; overflow: hidden; }
+        .kpi-card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .kpi-label { font-size: 13px; color: #666; font-weight: 500; }
+        .kpi-value { font-size: 26px; font-weight: 700; margin-top: 10px; color: #333; }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 10px; }
+        th, td { padding: 12px 15px; text-align: right; border-bottom: 1px solid #eee; }
+        th { background: #f1f3f5; font-weight: 600; color: #495057; font-size: 14px; white-space: nowrap; }
+        tr:hover { background-color: #f8f9fa; }
+        
+        /* Utilities */
+        .input-group { margin-bottom: 0; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 13px; color: #555; }
+        .input-group input, .input-group select, textarea { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; background: #fff; transition: border 0.2s; }
+        .input-group input:focus, .input-group select:focus, textarea:focus { border-color: #80bdff; outline: none; box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25); }
+        
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-primary { background: #007bff; color: white; } .btn-primary:hover { background: #0056b3; }
+        .btn-success { background: #28a745; color: white; } .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; color: white; } .btn-danger:hover { background: #c82333; }
+        .btn-warning { background: #ffc107; color: #212529; } .btn-warning:hover { background: #e0a800; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        
+        .toast { position: fixed; bottom: 30px; left: 30px; background: #333; color: white; padding: 12px 24px; border-radius: 4px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s; font-size: 14px; }
+        @keyframes slideIn { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        /* Preview / Print Styles */
+        #previewWrapper { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #525659; z-index: 5000; overflow-y: auto; justify-content: center; padding: 20px; }
+        .preview-container { background: white; width: 210mm; min-height: 297mm; padding: 15mm; box-shadow: 0 0 20px rgba(0,0,0,0.5); position: relative; box-sizing: border-box; }
+        .print-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 12px; }
+        .print-table th { background: #f0f0f0; border: 1px solid #ccc; padding: 5px; font-weight: bold; }
+        .print-table td { border: 1px solid #ccc; padding: 5px; }
+        @media print {
+            .sidebar, .action-bar, #pdfActionButtons, .no-print { display: none !important; }
+            .main-content { margin: 0; padding: 0; display: none; }
+            #previewWrapper { position: static; background: white; display: block; padding: 0; overflow: visible; }
+            .preview-container { box-shadow: none; width: 100%; padding: 0; margin: 0; border: none; }
+            body { background: white; }
+        }
+        
+        /* Iteration Cards */
+        .iter-card { background: white; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px; border-right: 4px solid #007bff; transition: background 0.2s; }
+        .iter-card:hover { background: #f8f9fa; }
+        .iter-header { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .status-badge { font-size: 11px; background: #e9ecef; padding: 3px 10px; border-radius: 12px; font-weight: bold; }
+    </style>
+
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.mjs';
+        mermaid.initialize({ startOnLoad: false, theme: 'base' });
+        window.mermaid = mermaid;
+    </script>
+    <script src="app.js" defer></script>
+</head>
+<body>
+
+    <div id="loader">
+        <div class="spinner"></div>
+        <h2 style="margin-top:20px;">OneFlow 360</h2>
+        <p>טוען נתונים...</p>
+        <div id="connectionStatusMain" style="margin-top:20px; font-weight:bold; color:red;"></div>
+        <button class="btn btn-danger" style="margin-top:20px;" onclick="document.getElementById('loader').style.display='none'">❌ שחרר חסימה (Force Unlock)</button>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <div class="sidebar">
+        <h2 style="text-align:center; margin-bottom:10px;">OneFlow 360</h2>
+        <div class="version-tag" style="font-size: 10px; color: #888; margin-bottom: 20px; text-align:center;">V306.0 (Print Updates)</div>
+        <button class="nav-btn active" onclick="switchView('dashboard', this)">📊 דשבורד</button>
+        <button class="nav-btn" onclick="switchView('cashflow', this)">💸 ניהול תזרים</button>
+        <button class="nav-btn" onclick="switchView('crm', this)">👥 ניהול לקוחות</button>
+        <button class="nav-btn" onclick="switchView('generator', this)">📄 מחולל מסמכים</button>
+        <button class="nav-btn" onclick="switchView('import', this)">📥 ייבוא נתונים</button>
+        <button class="nav-btn" onclick="switchView('legend', this)">📘 מקרא מדדים</button>
+        <button class="nav-btn" onclick="switchView('help', this)">❓ עזרה</button>
+        <div style="margin-top:auto; padding-top:20px; border-top:1px solid #555;">
+            <button class="nav-btn" onclick="switchView('settings', this)" style="color:#ffc107;">⚙️ הגדרות מערכת</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        
+        <div id="view-dashboard" class="view-section active">
+            <h1>דשבורד מנהלים</h1>
+            <div class="kpi-container">
+                <div class="kpi-card" style="border-top-color: #9c27b0;" onclick="filterDash('iteration', this)"><div class="kpi-label">לקוחות באיטרציה</div><div class="kpi-value" id="kpi-iter-count">0</div></div>
+                <div class="kpi-card" style="border-top-color: #d32f2f;" onclick="filterDash('open_invoices', this)"><div class="kpi-label">חשבוניות פתוחות לגבייה</div><div class="kpi-value" id="kpi-open-invoices">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #ff9800;" onclick="filterDash('quote_balance', this)"><div class="kpi-label">יתרת הצעות לחיוב</div><div class="kpi-value" id="kpi-quote-balance">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #007bff;" onclick="filterDash('coll_month', this)"><div class="kpi-label">גבייה החודש (ברוטו)</div><div class="kpi-value" id="kpi-coll-month">0 ₪</div></div>
+                
+                <div class="kpi-card" style="border-top-color: #28a745;" onclick="filterDash('paid_year', this)"><div class="kpi-label">הכנסות השנה (נטו)</div><div class="kpi-value" id="kpi-paid-year">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #20c997;" onclick="filterDash('paid_month', this)"><div class="kpi-label">הכנסות החודש (נטו)</div><div class="kpi-value" id="kpi-paid-month">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #ffc107;" onclick="filterDash('forecast_year', this)"><div class="kpi-label">צפי הכנסות השנה</div><div class="kpi-value" id="kpi-forecast-total">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #6f42c1;" onclick="filterDash('collection_year', this)"><div class="kpi-label">סה"כ לגביה השנה</div><div class="kpi-value" id="kpi-collection-year">0 ₪</div></div>
+                
+                <div class="kpi-card" style="border-top-color: #17a2b8;" onclick="filterDash('pipe', this)"><div class="kpi-label">PIPE (הצעות פתוחות)</div><div class="kpi-value" id="kpi-pipe">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #6c757d;" onclick="filterDash('last_year', this)"><div class="kpi-label">הכנסות שנה שעברה</div><div class="kpi-value" id="kpi-last-year">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #e83e8c;" onclick="filterDash('next_year', this)"><div class="kpi-label">צפי שוטף שנה הבאה</div><div class="kpi-value" id="kpi-next-year">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #fd7e14;" onclick="filterDash('setup_year', this)"><div class="kpi-label">צפי הקמה השנה</div><div class="kpi-value" id="kpi-setup-year">0 ₪</div></div>
+                
+                <div class="kpi-card" style="border-top-color: #6610f2;" onclick="filterDash('recurring_year', this)"><div class="kpi-label">צפי שוטף השנה</div><div class="kpi-value" id="kpi-rec-year">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #dc3545;"><div class="kpi-label">הוצאות החודש</div><div class="kpi-value" id="kpi-exp-month">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #28a745;"><div class="kpi-label">תזרים חודשי</div><div class="kpi-value" id="kpi-flow-month">0 ₪</div></div>
+                <div class="kpi-card" style="border-top-color: #28a745;"><div class="kpi-label">תזרים שנתי</div><div class="kpi-value" id="kpi-flow-year">0 ₪</div></div>
+            </div>
+
+            <div class="filters-bar">
+                <div class="filter-group"><label>מתאריך</label><input type="date" id="filterStart" onchange="renderDashboardTable()"></div>
+                <div class="filter-group"><label>עד תאריך</label><input type="date" id="filterEnd" onchange="renderDashboardTable()"></div>
+                <div class="filter-group"><label>סטטוס</label><select id="filterStatus" onchange="renderDashboardTable()"><option value="">הכל</option><option>שולם</option><option>חשבונית יצאה</option><option>ממתין לגביה</option><option>תשלום עתידי</option><option>הצעת מחיר</option><option>אושרה</option><option>בוטלה</option></select></div>
+                
+                <button class="btn btn-warning btn-sm" id="btnAutoSync" onclick="toggleAutoSync()">🔄 סנכרון אוטומטי: כבוי</button>
+                <button class="btn btn-primary btn-sm" onclick="syncClientFiles()">📂 סנכרן קבצי לקוחות</button>
+                <button class="btn btn-primary btn-sm" onclick="clearDashFilters()">נקה סינון</button>
+                <button class="btn btn-success btn-sm" onclick="refreshData()">🔄 רענן נתונים</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteSelectedDashRows()">🗑️ מחק מסומנים</button>
+                <button class="btn btn-primary btn-sm" style="background:#6610f2;" onclick="saveSelectedDashRows()">💾 שמור מסומנים (Batch)</button>
+            </div>
+            
+            <div style="position:relative; min-height:200px;">
+                <div id="dashLoader" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); justify-content:center; align-items:center; z-index:10;"><div class="spinner"></div></div>
+                <table id="dashTable">
+                    <thead></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="view-crm" class="view-section dashboard-ui">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h1>ניהול לקוחות</h1>
+                <button class="btn btn-primary" onclick="openClientModal('NEW')">+ לקוח חדש</button>
+            </div>
+            <input type="text" id="crmSearch" placeholder="חפש לקוח לפי שם, ח.פ, טלפון..." onkeyup="renderCRMTable()" style="margin-bottom:15px; width:100%; padding:12px;">
+            <table id="crmTable">
+                <thead><tr><th>שם לקוח</th><th>איש קשר</th><th>סטטוס</th><th>טלפון</th><th>ח.פ</th><th>פעולות</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="view-generator" class="view-section">
+             <div class="gen-container dashboard-ui" id="editorArea">
+                <h1 style="color:var(--primary);">מחולל מסמכים</h1>
+                <div class="form-group" style="background:#e3f2fd; padding:15px; border-radius:5px; margin-bottom:15px;">
+                    <label>בחר לקוח:</label><input type="text" list="dlClientsGen" id="inputClientName" placeholder="התחל להקליד..." onchange="fillClientFromCRM()" style="width:100%; padding:8px;">
+                    <datalist id="dlClientsGen"></datalist>
+                    <input type="hidden" id="genClientHP"><input type="hidden" id="genClientContact"><input type="hidden" id="genClientEmail">
+                </div>
+                <div class="form-group" style="display:flex; gap:10px; margin-bottom:15px;">
+                    <div style="flex:1"><label>סוג מסמך:</label><select id="docType" onchange="updateFormView()" style="width:100%; padding:8px;"><option value="product_quote">הצעת מחיר - מוצר</option><option value="hours_quote">הצעת מחיר - שעות</option><option value="iteration">איטרציה</option></select></div>
+                    <div style="flex:1"><label>מספר מסמך:</label><input type="number" id="inputDocNum" style="width:100%; padding:8px;"></div>
+                    <div style="flex:1"><label>תאריך:</label><input type="date" id="inputDate" style="width:100%; padding:8px;"></div>
+                </div>
+                
+                <div id="areaIterFields" style="background:#fff3cd; padding:15px; border-radius:5px; margin-bottom:10px; display:none;">
+                    <div style="display:flex; gap:10px; margin-bottom:10px;">
+                        <div style="flex:1"><label>מספר איטרציה:</label><input type="text" id="inputIterNum"></div>
+                        <div style="flex:1"><label>צפי לשחרור גרסה:</label><input type="date" id="inputReleaseDate"></div>
+                    </div>
+                    <label style="display:block; margin-bottom:5px; font-weight:bold;">תכולת האיטרציה (הדבקה חופשית):</label>
+                    <textarea id="inputPasteIter" rows="6" style="width:100%;" onchange="parseIterationText()"></textarea>
+                </div>
+
+                <div id="areaHoursScope" style="background:#e8f5e9; padding:15px; border-radius:5px; margin-bottom:10px; display:none;">
+                      <label style="font-weight:bold; color:#2e7d32;">פירוט תכולה (הדבקה חופשית):</label>
+                      <textarea id="inputPasteQuote" rows="6" style="width:100%; font-family:monospace;" oninput="parseQuotePaste()"></textarea>
+                </div>
+
+                <div id="areaValidFields"><label>תוקף הצעה:</label><input type="text" id="inputValidUntil" value="14 ימים"></div>
+                
+                <div id="areaGeneralNotes" style="margin-top:15px; background:#f9f9f9; padding:15px; border-radius:5px; border:1px solid #eee;">
+                    <label style="font-weight:bold;">הערות כלליות להצעה (יופיעו במסמך המודפס):</label>
+                    <textarea id="inputGeneralNotes" rows="3" placeholder="הזן כאן הערות כלליות, סיכומים מיוחדים וכו'..." style="width:100%; margin-top:5px;"></textarea>
+                </div>
+                
+                <div id="areaBuilder" style="margin-top: 15px;">
+                    <h3>בניית הצעת מחיר</h3>
+                    <div class="add-item-box" style="background:#f1f8ff; padding:15px; border:1px solid #b3d7ff;">
+                        <div class="add-item-row" style="display:flex; gap:10px; align-items:flex-end;">
+                            <div style="flex:2">
+                                <label>בחר פריט:</label>
+                                <select id="selItemPreset" onchange="fillItemDetails()" style="width:100%; height:40px;"><option value="">-- בחר --</option></select>
+                                <input type="text" id="inputItemName" placeholder="או הקלד שם..." style="width:100%; margin-top:5px; height:35px;">
+                            </div>
+                            <div style="width:100px;">
+                                <label>מחיר:</label>
+                                <input type="number" id="inputItemPrice" style="width:100%; height:40px;">
+                            </div>
+                            <div style="width:70px;">
+                                <label>כמות:</label>
+                                <input type="number" id="inputItemQty" value="1" style="width:100%; height:40px; text-align:center;">
+                            </div>
+                            <div class="monthly-wrapper" style="display:flex; align-items:center; background:white; padding:8px; height:40px; border:1px solid #ccc;">
+                                <label for="cbIsMonthly" style="margin-bottom:0; font-size:12px; margin-left:5px;">שוטף?</label>
+                                <input type="checkbox" id="cbIsMonthly">
+                            </div>
+                            <button class="btn btn-success" style="height:40px;" onclick="addItemRow()">➕ הוסף</button>
+                        </div>
+                        <textarea id="inputItemDesc" placeholder="פירוט נוסף להצגה תחת הפריט..." style="width:100%; height:50px; margin-top:10px;"></textarea>
+                    </div>
+                    <div style="margin-top:15px; background:#fff0f0; padding:10px; border-radius:4px; display:inline-block;"><label>הנחה (%):</label><input type="number" id="inputDiscountPercent" value="0" min="0" max="100" style="width:60px;" onchange="renderBuilderTable()"></div>
+                </div>
+                
+                <table class="data-table" style="margin-top:20px;"><thead id="builderThead"><tr><th>פריט</th><th>כמות</th><th>מחיר יח'</th><th>סה"כ</th><th>סוג</th><th>מחק</th></tr></thead><tbody id="builderTableBody"></tbody></table>
+                <div id="builderTotals" style="margin-top:15px; font-weight:bold; font-size:16px; background:#f8f9fa; padding:10px;"><div>סה"כ הקמה (נטו): <span id="dispSetup">0</span> ₪</div><div style="color:green;">סה"כ חודשי: <span id="dispMonthly">0</span> ₪</div></div>
+                <div style="margin-top:30px; display:flex; gap:15px;">
+                    <button class="btn btn-success" onclick="generatePreview()">👁️ צור מסמך</button>
+                    <button class="btn btn-warning" onclick="saveDealFromGenerator()">☁️ שמור עסקה</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-import" class="view-section">
+            <h1>ייבוא נתונים</h1>
+            <div class="import-box" style="background:white; padding:20px; border-radius:8px;">
+                <label>סוג ייבוא:</label>
+                <select id="importType" style="margin-bottom:10px;">
+                    <option value="finance">הכנסות (חשבוניות)</option>
+                    <option value="expense">הוצאות</option>
+                </select>
+                <textarea id="importText" class="import-textarea" placeholder="הדבק כאן את הטבלה מאקסל..." style="width:100%; height:200px; padding:10px; border:1px solid #ccc; font-family:monospace;"></textarea>
+                <button class="btn btn-primary" onclick="processImport()" style="margin-top:10px;">🚀 בצע ייבוא</button>
+                <div id="importLog" class="import-log" style="margin-top:20px; border:1px solid #eee; padding:10px; max-height:300px; overflow-y:auto;">לוג ביצוע...</div>
+            </div>
+        </div>
+
+        <div id="view-settings" class="view-section">
+            <div style="background:white; padding:20px; border-radius:8px; max-width:800px; margin-bottom:20px;">
+                <h2>הגדרות חיבור</h2>
+                <div class="input-group">
+                    <label>כתובת סקריפט (GAS URL):</label>
+                    <input type="text" id="settingGasUrl" style="width:100%; direction:ltr;">
+                </div>
+                <button class="btn btn-success" onclick="saveSettings()">שמור ובצע בדיקת תקשורת</button>
+                <div id="connectionStatus" style="margin-top:15px; font-weight:bold;"></div>
+            </div>
+            <div style="border:2px solid #dc3545; padding:20px; border-radius:8px; background:#fff5f5; max-width:800px;">
+                <div style="color:#dc3545; font-weight:bold; margin-bottom:10px;">⚠️ מחיקת לקוחות מרוכזת</div>
+                <textarea id="txtBulkHP" class="import-textarea" style="width:100%; border:1px solid #dc3545;" rows="5" placeholder="511234567..."></textarea>
+                <button class="btn btn-danger" onclick="deleteClientsByList()">🗑️ מחק לקוחות</button>
+                <button class="btn btn-danger" onclick="wipeAllFinance()" style="background:black; margin-right:10px;">💀 מחק את כל הכספים</button>
+            </div>
+        </div>
+
+        <div id="view-help" class="view-section"><h1>תרשים זרימה</h1><div id="mermaidGraph" class="mermaid">
+graph TD
+    A[התחלה] --> B(ניהול לקוחות CRM)
+    B --> C{האם לקוח קיים?}
+    C -- לא --> D[יצירת לקוח חדש]
+    C -- כן --> E[עריכת פרטים / הוספת הערה]
+    D --> F[מחולל מסמכים]
+    E --> F
+    F --> G{סוג מסמך}
+    G -- הצעת מחיר --> H[יצירת PDF + שמירה בפיננסי]
+    G -- איטרציה --> I[יצירת מסמך אפיון]
+    H --> J[דשבורד וניהול תזרים]
+    I --> J
+        </div></div>
+        <div id="view-legend" class="view-section"><h1>מקרא</h1><p>מידע על סטטוסים ומדדים יופיע כאן.</p></div>
+        <div id="view-cashflow" class="view-section"><h1>ניהול תזרים</h1>
+             <div style="background:white; padding:15px; border-radius:8px;">
+                <h3>הוספת הוצאה</h3>
+                <div style="display:flex; gap:10px;">
+                    <select id="expType"><option value="Variable">משתנה</option><option value="Fixed">קבוע</option></select>
+                    <input type="text" id="expDesc" placeholder="תיאור">
+                    <input type="number" id="expAmount" placeholder="סכום">
+                    <div id="expDateDiv"><input type="date" id="expDate"></div>
+                    <button class="btn btn-success" onclick="addExpense()">הוסף</button>
+                </div>
+             </div>
+             <div style="background:white; padding:15px; margin-top:20px; border-radius:8px;">
+                <table id="expTable"><thead><tr><th>סוג</th><th>תיאור</th><th>סכום</th><th>תאריך</th><th>מחק</th></tr></thead><tbody></tbody></table>
+             </div>
+        </div>
+
+    </div>
+
+    <div id="previewWrapper">
+        <div class="action-bar no-print" style="margin-bottom:20px; display:flex; gap:10px; justify-content:center;">
+            </div>
+        <div id="previewPage" class="preview-container">
+            <div class="print-header" style="display:flex; justify-content:space-between; margin-bottom:30px;">
+                <div class="logos-wrapper">
+                      <h2 style="margin:0; color:#333;">ONEBTN</h2>
+                      <div style="margin-top:5px; font-size:12px;">וואן באטן פתרונות דיגיטל בע"מ | ח.פ: 517029922</div>
+                </div>
+                <div style="text-align:left; font-size:12px;">
+                    <strong>תאריך:</strong> <span id="pDate"></span><br>
+                    <strong>מספר מסמך:</strong> #<span id="pDocNum"></span><br>
+                    <span id="pExtraMeta"></span>
+                </div>
+            </div>
+            <div class="client-box" style="margin-bottom:30px; background:#f9f9f9; padding:15px; border-radius:5px;">
+                <h3 style="margin-top:0;">פרטי הלקוח</h3>
+                <div>לכבוד: <strong><span id="pClientName"></span></strong></div>
+                <div>ח.פ: <span id="pClientHP"></span></div>
+                <div>לידי: <span id="pContact"></span></div>
+            </div>
+            <div id="pIntroText" style="margin-bottom:20px; line-height:1.6; font-size:14px;"></div>
+            <div id="pContentTables"></div>
+            <div id="bottomSection" class="bottom-wrapper" style="margin-top:40px; display:flex; justify-content:space-between; align-items:flex-start;">
+                <div class="payment-info-box" style="font-size:12px;">
+                    <h4 style="margin-bottom:5px;">פרטי תשלום:</h4>
+                    <div><strong>מוטב:</strong> וואן באטן פתרונות דיגיטל בע"מ</div>
+                    <div><strong>ח.פ:</strong> 517029922</div>
+                    <div><strong>בנק:</strong> הפועלים (12) | <strong>סניף:</strong> 622 | <strong>ח-ן:</strong> 111770</div>
+                    <div style="margin-top:5px; font-size:10px; color:#666;">נא לשלוח אסמכתא ל-Office@onebutton.co.il</div>
+                </div>
+                <div class="totals-section" id="pTotalsBox"></div>
+            </div>
+            <div id="pTerms" style="margin-top:40px; font-size:11px; border-top:1px solid #ccc; padding-top:10px;"></div>
+            
+            <div class="approval-box" style="margin-top:60px; text-align:center; page-break-inside:avoid;">
+                <p style="font-weight:bold;">מאשר בחתימה:</p><br><br>
+                <div style="border-bottom:1px solid #000; width:200px; display:inline-block;"></div>
+                <div style="font-size:12px; margin-top:5px;">חתימת הלקוח וחותמת</div>
+            </div>
+
+            <div class="footer-wrapper" style="margin-top:50px; text-align:center; border-top:1px solid #eee; padding-top:10px;">
+                <div style="font-size:10px; color:#999;">ONEBTN | OneFlow B2B 360 | www.oneflow360.shaps.co.il</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="clientModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div style="display:flex; align-items:center;">
+                    <h2 id="modalTitle" style="margin:0; margin-left:15px;">כרטיס לקוח</h2>
+                    <div id="clientRevenueBadge" class="revenue-badge" style="font-size:12px; color:green; font-weight:bold;"></div>
+                </div>
+                <div>
+                    <button onclick="deleteClient()" class="btn btn-danger btn-sm">🗑️ מחק</button>
+                    <button onclick="closeModal()" class="btn btn-danger btn-sm">X</button>
+                </div>
+            </div>
+            <div class="modal-tabs">
+                <div class="modal-tab active" id="mtab-details" onclick="switchModalTab('details')">פרטים</div>
+                <div class="modal-tab" id="mtab-notes" onclick="switchModalTab('notes')">תיעוד (CRM)</div>
+                <div class="modal-tab" id="mtab-finance" onclick="switchModalTab('finance')">פיננסי (חשבון)</div>
+                <div class="modal-tab" id="mtab-quotes" onclick="switchModalTab('quotes')">הצעות מחיר</div>
+                <div class="modal-tab" id="mtab-iterations" onclick="switchModalTab('iterations')">איטרציות</div>
+            </div>
+            
+            <div id="mtab-details" class="tab-content active">
+                <div class="form-grid">
+                    <div class="input-group"><label>שם חברה</label><input type="text" id="inpCName"></div>
+                    <div class="input-group"><label>איש קשר</label><input type="text" id="inpCContact"></div>
+                    <div class="input-group"><label>טלפון</label><input type="text" id="inpCPhone"></div>
+                    <div class="input-group"><label>אימייל</label><input type="text" id="inpCEmail"></div>
+                    <div class="input-group"><label>ח.פ / ע.מ</label><input type="text" id="inpCHP"></div>
+                    <div class="input-group"><label>סטטוס לקוח</label><select id="inpCStatus"><option>לקוח הקמה</option><option>לקוח שוטף</option><option>ליד חם</option><option>הזדמנות</option></select></div>
+                    <div class="input-group" style="display:flex; align-items:center; background:#ffebee; padding:10px; border-radius:4px;">
+                        <input type="checkbox" id="inpCFrozen" style="width:20px; height:20px; margin-left:10px;">
+                        <label for="inpCFrozen" style="margin-bottom:0; color:red; font-weight:bold;">לקוח מוקפא</label>
+                    </div>
+                    <div class="input-group" style="background:#e8f5e9; border:1px solid #28a745; padding:10px; border-radius:4px;">
+                        <label style="color:#28a745; font-weight:bold;">סכום ריטיינר חודשי:</label>
+                        <input type="number" id="inpCRetainer">
+                    </div>
+                </div>
+                <button class="btn btn-success" style="margin-top:20px; width:100%; padding:15px; font-size:16px;" onclick="saveClientDetails()">💾 שמור פרטים</button>
+            </div>
+
+            <div id="mtab-notes" class="tab-content">
+                <div style="background:#eee; padding:15px; border-radius:4px; margin-bottom:15px;">
+                    <label>הוסף הערה:</label><textarea id="inpNoteContent" rows="3" style="width:100%; margin-bottom:10px;"></textarea>
+                    <div style="display:flex; justify-content:space-between;"><input type="date" id="inpNoteDate" style="width:150px;"><button class="btn btn-primary btn-sm" onclick="addNote()">שמור</button></div>
+                </div>
+                <div id="notesList"></div>
+            </div>
+
+            <div id="mtab-finance" class="tab-content">
+                <div id="financeInputContainer">
+                    <div style="background:#e3f2fd; padding:10px; margin-bottom:15px; border-radius:8px; border:1px solid #90caf9;">
+                        <h5 style="color:#1565c0; margin-bottom:10px;">הוסף תנועה פיננסית:</h5>
+                        
+                        <div style="margin-bottom:10px;">
+                            <label style="font-size:12px;">משוך מהצעת מחיר קיימת:</label>
+                            <select id="inpFinLinkQuote" style="width:100%;" onchange="renderQuoteItemsSelection()">
+                                <option value="">-- בחר הצעה לקשר --</option>
+                            </select>
+                            <div id="quoteItemsSelectBox" class="items-selection-box"></div>
+                        </div>
+
+                        <div style="display:flex; gap:10px; margin-bottom:10px;">
+                            <select id="inpNewFinType" style="flex:1;">
+                                <option value="חד פעמי">הקמה / חד פעמי</option>
+                                <option value="שוטף">שוטף</option>
+                            </select>
+                            <select id="inpNewFinDocType" style="flex:1;">
+                                <option value="חשבונית מס">חשבונית מס</option>
+                                <option value="חשבונית זיכוי">חשבונית זיכוי</option>
+                                <option value="קבלה">קבלה</option>
+                                <option value="הצעת מחיר">הצעת מחיר</option>
+                            </select>
+                            <input type="date" id="inpNewFinDate" style="flex:1;">
+                        </div>
+
+                        <div style="display:flex; gap:10px; margin-bottom:10px;">
+                            <input type="number" id="inpNewFinAmount" placeholder="סכום" style="width:100px;">
+                            <input type="text" id="inpNewFinTitle" placeholder="שם תנועה (חובה)" style="flex:1; font-weight:bold;">
+                            <input type="text" id="inpNewFinDesc" placeholder="תיאור / פירוט נוסף" style="flex:1;">
+                        </div>
+                        
+                        <div style="display:flex; gap:10px; margin-bottom:10px;">
+                             <input type="text" id="inpNewFinRef" placeholder="מס' חשבונית / אסמכתא" style="flex:1;">
+                             <input type="date" id="inpNewFinForecast" title="צפי תשלום" style="flex:1;">
+                        </div>
+
+                        <button id="btnSaveNewFin" class="btn btn-success" style="width:100%;" onclick="addNewFinanceItem()">שמור תנועה</button>
+                    </div>
+                </div>
+
+                <div id="financeList">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th class="col-cb"><input type="checkbox" onchange="toggleAllFinance(this)"></th>
+                                <th class="col-date">תאריך</th>
+                                <th class="col-amount">סכום</th>
+                                <th class="col-desc">תיאור</th>
+                                <th>אסמכתא</th>
+                                <th>צפי</th>
+                                <th>סוג</th>
+                                <th>תשלום</th>
+                                <th class="col-status">סטטוס</th>
+                                <th class="col-action">פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="financeTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="mtab-quotes" class="tab-content">
+                <h3>הצעות מחיר (ארכיון)</h3>
+                <button class="btn btn-primary" onclick="createNewQuoteFromClient()" style="margin-bottom:10px; width:100%;">➕ צור הצעת מחיר ללקוח זה</button>
+                <table style="width:100%">
+                    <thead><tr><th>תאריך</th><th>מספר הצעה</th><th>סכום</th><th>סטטוס</th><th>תכולה</th><th>פעולה</th></tr></thead>
+                    <tbody id="quotesTableBody"></tbody>
+                </table>
+                <div style="margin-top:15px;">
+                    <button class="btn btn-success" onclick="saveQuotesChanges()">💾 שמור שינויי סטטוס</button>
+                </div>
+            </div>
+
+            <div id="mtab-iterations" class="tab-content">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h3>ניהול איטרציות פיתוח</h3>
+                    <button class="btn btn-success" onclick="saveIterationData()">💾 שמור שינויים</button>
+                </div>
+                <div id="iterationsContainer"></div>
+            </div>
+
+        </div>
+    </div>
+</body>
+</html>
