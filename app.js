@@ -1,9 +1,7 @@
 /**
  * ============================================================================
  * ONEFLOW 360 - CLIENT SIDE (app.js)
- * VERSION: V305.1 (VAT UPDATE)
- * 1. FIX: VAT Rate set to 18%.
- * 2. FIX: Detailed VAT breakdown in Quote Preview.
+ * VERSION: V306.0 (Print Formatting, Descriptions & General Notes)
  * ============================================================================
  */
 
@@ -11,7 +9,7 @@
 
 let GAS_URL = localStorage.getItem('oneflow_gas_url') || ""; 
 const START_DOC_NUM = 135250;
-const VAT_RATE = 0.18; // עודכן ל-18% מע"מ
+const VAT_RATE = 0.18; // מע"מ 18%
 let activeClientId = null;
 let quoteItems = [];        
 let hoursScopeLines = [];   
@@ -45,9 +43,7 @@ const TERMS_FULL_PRODUCT = `
         <li><strong>שינויים ותוספות:</strong> כל בקשה לפיתוח ממשק או יכולות שאינן במפרט המקורי, תתומחר בנפרד ותבוצע רק לאחר אישור הצעת מחיר בכתב.</li>
         <li><strong>עיצוב:</strong> העלות כוללת עיצוב גרסה ראשונה (עד 3 סבבי תיקונים). גרסאות נוספות יתומחרו בנפרד.</li>
         <li><strong>תחילת חיוב שוטף (שלב א'):</strong> לאחר הגשת שלב א' וסיום חודש בדיקות שטח - יחל תשלום שוטף חודשי עבור תחזוקת מערכת הבסיס.</li>
-        <li><strong>משתמשי המערכת - תחילת חיוב מלא (סיום ההקמה):</strong> לאחר סיום הגשת שלב א' - יחל התשלום השוטף החודשי עבור מערכת הבסיס.</li>
-        <li><strong>הלקוח מתחייב להעמיד רצף פעילות נדרשת לטובת עמידה בלוחות הזמנים (סיום ההקמה):</strong> מסגרת זמן לפרויקט - שלושה חודשים מיום סיום אפיון.</li>
-        <li><strong>הלקוח מתחייב להעמיד את המשאבים בצד ה -ERP.(API,הרשאות, שדות ונתונים) :</strong> תכולות פרויקט - בהתאם לאפיון.</li>
+        <li><strong>תחילת חיוב מלא (סיום ההקמה):</strong> לאחר סיום ההקמה בהתאם לאפיון - יחל התשלום השוטף החודשי עבור מערכת הבסיס ומשתמשי המערכת.</li>
     </ul>
     <h4>2. עלויות צד ג' ותשלומים נלווים</h4>
     <ul>
@@ -59,14 +55,14 @@ const TERMS_FULL_PRODUCT = `
     <ul>
         <li><strong>גורמים מורשים:</strong> התמיכה תינתן לאנשי קשר מורשים מטעם הלקוח בלבד.</li>
         <li><strong>שעות פעילות המוקד:</strong> ימים א'-ה' 08:00-18:00. יום ו' 08:00-13:00. בשבתות וחגי ישראל אין מענה (למעט תקלות משביתות שרת).</li>
-        <li><strong>SLA:</strong> תקלות משביתות יטופלו בתוך 24 שעות (כולל ימי שישי, למעט יום כיפור וימי חג). תקלות משתמש בודד יטופלו עד 3 ימי עסקים.</li>
+        <li><strong>SLA:</strong> תקלות משביתות יטופלו בתוך 24 שעות (כולל סופ"ש למעט יום כיפור). תקלות משתמש בודד יטופלו עד 3 ימי עסקים.</li>
         <li>גיבויים מתבצעים אוטומטית אחת ל-24 שעות.</li>
     </ul>
     <h4>4. הסכם שירות ועדכון מחירים</h4>
     <ul>
         <li>הסכם השירות מתחדש אוטומטית בסוף כל שנה קלנדרית, אלא אם התקבלה הודעת ביטול רשמית במייל עד תאריך 01.09 של אותה שנה.</li>
         <li>החברה רשאית לעדכן את מחירי השירות בהודעה של 90 יום מראש.</li>
-        <li><strong>מינימום משתמשים:</strong>מתחת ל-5 משתמשים, המחיר למשתמש יעלה ב-15%.</li>
+        <li><strong>מינימום משתמשים:</strong> מתחת ל-5 משתמשים, המחיר למשתמש יעלה ב-15% כדי לכסות עלויות תפעול.</li>
     </ul>
     <h4>5. קניין רוחני, אחריות ונגישות</h4>
     <ul>
@@ -77,7 +73,7 @@ const TERMS_FULL_PRODUCT = `
     <ul>
         <li>המחירים בהצעה זו אינם כוללים מע"מ כחוק.</li>
         <li><strong>תנאי תשלום להקמה:</strong> מקדמה בסך 30% מסך ההצעה בחתימה. יתרת הסכום תשולם ב-4 תשלומים חודשיים שווים ועוקבים.</li>
-        <li><strong>תנאי תשלום לשוטף:</strong> תשלום רבעוני.</li>
+        <li><strong>תנאי תשלום לשוטף:</strong> יבוצעו בהוראת קבע / כרטיס אשראי בכל 1 לחודש עבור החודש העוקב.</li>
         <li>תוקף ההצעה: 14 ימים מיום הפקתה.</li>
     </ul>
 </div>
@@ -1193,6 +1189,11 @@ window.updateFormView = function() {
     document.getElementById('areaHoursScope').style.display = (type === 'hours_quote') ? 'block' : 'none';
     document.getElementById('areaBuilder').style.display = (type !== 'iteration') ? 'block' : 'none';
     document.getElementById('builderTotals').style.display = (type !== 'iteration') ? 'block' : 'none';
+    
+    // Toggle General Notes area
+    if(document.getElementById('areaGeneralNotes')) {
+        document.getElementById('areaGeneralNotes').style.display = (type !== 'iteration') ? 'block' : 'none';
+    }
 
     if(type === 'iteration' && !document.getElementById('cbTableMode')) {
          const container = document.getElementById('areaIterFields');
@@ -1234,6 +1235,7 @@ window.addItemRow = function() {
     renderBuilderTable(); 
     document.getElementById('inputItemName').value = ''; 
     document.getElementById('inputItemPrice').value = 0; 
+    document.getElementById('inputItemDesc').value = '';
     document.getElementById('cbIsMonthly').checked = false;
 }
 
@@ -1316,26 +1318,49 @@ window.generatePreview = function() {
     let html = "";
     if(type === 'hours_quote' && hoursScopeLines.length > 0) {
           html += `<div class="print-table-title" style="margin-bottom:10px; font-weight:bold; border-bottom:2px solid #0056b3; display:inline-block;">פירוט תכולה / משימות</div><table class="print-table" style="width:100%; border-collapse:collapse;"><tbody>`;
-          hoursScopeLines.forEach(line => { html += `<tr><td class="wrap-text" style="padding:8px; border-bottom:1px solid #eee;">${line}</td></tr>`; });
+          hoursScopeLines.forEach(line => { html += `<tr><td class="wrap-text" style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap; word-break:break-word;">${line}</td></tr>`; });
           html += `</tbody></table><br>`;
     }
 
+    // --- UPDATE 1 & 3: TEXT WRAP AND DESCRIPTIONS ---
     if (setupItems.length > 0 && type !== 'iteration') {
         html += `<h4 style="color:#28a745; border-bottom:2px solid #28a745; margin-bottom:5px;">עלויות הקמה / פיתוח (חד פעמי)</h4>`;
-        html += `<table class='print-table'><thead><tr><th>פריט</th><th>כמות</th><th>מחיר יח'</th><th>סה"כ</th></tr></thead><tbody>`;
+        html += `<table class='print-table'><thead><tr><th style="width:50%;">פריט ותיאור</th><th style="width:10%;">כמות</th><th style="width:20%;">מחיר יח'</th><th style="width:20%;">סה"כ</th></tr></thead><tbody>`;
         setupItems.forEach(it => {
-            html += `<tr><td>${it.name}</td><td>${it.qty}</td><td>${it.price.toLocaleString()}</td><td>${(it.price*it.qty).toLocaleString()} ₪</td></tr>`;
+            let descHtml = it.desc ? `<div style="font-size:11px; color:#555; margin-top:4px; white-space:pre-wrap; word-break:break-word;">${it.desc}</div>` : "";
+            html += `<tr>
+                <td style="white-space:pre-wrap; word-break:break-word;"><strong>${it.name}</strong>${descHtml}</td>
+                <td style="text-align:center;">${it.qty}</td>
+                <td>${it.price.toLocaleString()} ₪</td>
+                <td style="font-weight:bold;">${(it.price*it.qty).toLocaleString()} ₪</td>
+            </tr>`;
         });
         html += `</tbody></table><br>`;
     }
 
     if (monthlyItems.length > 0 && type !== 'iteration') {
         html += `<h4 style="color:#007bff; border-bottom:2px solid #007bff; margin-bottom:5px;">עלויות שוטפות (ריטיינר חודשי)</h4>`;
-        html += `<table class='print-table'><thead><tr><th>פריט</th><th>כמות</th><th>מחיר יח'</th><th>סה"כ</th></tr></thead><tbody>`;
+        html += `<table class='print-table'><thead><tr><th style="width:50%;">פריט ותיאור</th><th style="width:10%;">כמות</th><th style="width:20%;">מחיר יח'</th><th style="width:20%;">סה"כ</th></tr></thead><tbody>`;
         monthlyItems.forEach(it => {
-            html += `<tr><td>${it.name}</td><td>${it.qty}</td><td>${it.price.toLocaleString()}</td><td>${(it.price*it.qty).toLocaleString()} ₪</td></tr>`;
+            let descHtml = it.desc ? `<div style="font-size:11px; color:#555; margin-top:4px; white-space:pre-wrap; word-break:break-word;">${it.desc}</div>` : "";
+            html += `<tr>
+                <td style="white-space:pre-wrap; word-break:break-word;"><strong>${it.name}</strong>${descHtml}</td>
+                <td style="text-align:center;">${it.qty}</td>
+                <td>${it.price.toLocaleString()} ₪</td>
+                <td style="font-weight:bold;">${(it.price*it.qty).toLocaleString()} ₪</td>
+            </tr>`;
         });
         html += `</tbody></table><br>`;
+    }
+    
+    // --- UPDATE 2: GENERAL NOTES ---
+    const genNotesEl = document.getElementById('inputGeneralNotes');
+    const genNotesVal = genNotesEl ? genNotesEl.value : "";
+    if (genNotesVal.trim() && type !== 'iteration') {
+        html += `<div style="margin-top:10px; margin-bottom:20px; background:#fdfdfd; padding:15px; border:1px solid #ddd; border-radius:5px;">
+            <h4 style="margin-top:0; border-bottom:1px solid #eee; padding-bottom:5px; margin-bottom:10px;">הערות:</h4>
+            <div style="white-space:pre-wrap; font-size:13px; line-height:1.5;">${genNotesVal}</div>
+        </div>`;
     }
 
     const freeText = (type === 'iteration') ? document.getElementById('inputPasteIter').value : "";
@@ -1350,7 +1375,7 @@ window.generatePreview = function() {
                  if(r.trim()) {
                      contentHtml += `<tr>`;
                      const cells = r.split('\t'); 
-                     cells.forEach(c => contentHtml += `<td style="padding:5px;">${c.trim()}</td>`);
+                     cells.forEach(c => contentHtml += `<td style="padding:5px; white-space:pre-wrap; word-break:break-word;">${c.trim()}</td>`);
                      contentHtml += `</tr>`;
                  }
              });
@@ -1365,7 +1390,7 @@ window.generatePreview = function() {
                      l = l.substring(1, l.length - 1);
                      l = l.replace(/""/g, '"'); 
                  }
-                 contentHtml += `<li style="margin-bottom:8px; page-break-inside:avoid;">${l}</li>`;
+                 contentHtml += `<li style="margin-bottom:8px; page-break-inside:avoid; white-space:pre-wrap; word-break:break-word;">${l}</li>`;
              });
              contentHtml += `</ol>`;
         }
