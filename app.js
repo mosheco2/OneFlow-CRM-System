@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * ONEFLOW 360 - CLIENT SIDE (app.js)
- * VERSION: V307.0 (View & Print Saved Quotes from CRM)
+ * VERSION: V308.0 (Print Layout Fixes - Page Break Avoid)
  * ============================================================================
  */
 
@@ -1372,7 +1372,14 @@ window.generatePreview = function() {
     if(type === 'hours_quote') parseQuotePaste();
 
     document.getElementById('pIntroText').innerHTML = DOC_CONFIG[type].intro;
-    document.getElementById('pTerms').innerHTML = DOC_CONFIG[type].terms;
+    
+    // אבטחת מניעת חיתוך של אזור התנאים
+    const termsEl = document.getElementById('pTerms');
+    if (termsEl) {
+        termsEl.innerHTML = DOC_CONFIG[type].terms;
+        termsEl.style.pageBreakInside = 'avoid';
+        termsEl.style.breakInside = 'avoid';
+    }
     
     const setupItems = quoteItems.filter(i => !i.isMonthly);
     const monthlyItems = quoteItems.filter(i => i.isMonthly);
@@ -1380,7 +1387,7 @@ window.generatePreview = function() {
     let html = "";
     if(type === 'hours_quote' && hoursScopeLines.length > 0) {
           html += `<div class="print-table-title" style="margin-bottom:10px; font-weight:bold; border-bottom:2px solid #0056b3; display:inline-block;">פירוט תכולה / משימות</div><table class="print-table" style="width:100%; border-collapse:collapse;"><tbody>`;
-          hoursScopeLines.forEach(line => { html += `<tr><td class="wrap-text" style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap; word-break:break-word;">${line}</td></tr>`; });
+          hoursScopeLines.forEach(line => { html += `<tr style="page-break-inside: avoid; break-inside: avoid;"><td class="wrap-text" style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap; word-break:break-word;">${line}</td></tr>`; });
           html += `</tbody></table><br>`;
     }
 
@@ -1390,7 +1397,7 @@ window.generatePreview = function() {
         html += `<table class='print-table'><thead><tr><th style="width:50%;">פריט ותיאור</th><th style="width:10%;">כמות</th><th style="width:20%;">מחיר יח'</th><th style="width:20%;">סה"כ</th></tr></thead><tbody>`;
         setupItems.forEach(it => {
             let descHtml = it.desc ? `<div style="font-size:11px; color:#555; margin-top:4px; white-space:pre-wrap; word-break:break-word;">${it.desc}</div>` : "";
-            html += `<tr>
+            html += `<tr style="page-break-inside: avoid; break-inside: avoid;">
                 <td style="white-space:pre-wrap; word-break:break-word;"><strong>${it.name}</strong>${descHtml}</td>
                 <td style="text-align:center;">${it.qty}</td>
                 <td>${it.price.toLocaleString()} ₪</td>
@@ -1405,7 +1412,7 @@ window.generatePreview = function() {
         html += `<table class='print-table'><thead><tr><th style="width:50%;">פריט ותיאור</th><th style="width:10%;">כמות</th><th style="width:20%;">מחיר יח'</th><th style="width:20%;">סה"כ</th></tr></thead><tbody>`;
         monthlyItems.forEach(it => {
             let descHtml = it.desc ? `<div style="font-size:11px; color:#555; margin-top:4px; white-space:pre-wrap; word-break:break-word;">${it.desc}</div>` : "";
-            html += `<tr>
+            html += `<tr style="page-break-inside: avoid; break-inside: avoid;">
                 <td style="white-space:pre-wrap; word-break:break-word;"><strong>${it.name}</strong>${descHtml}</td>
                 <td style="text-align:center;">${it.qty}</td>
                 <td>${it.price.toLocaleString()} ₪</td>
@@ -1415,11 +1422,11 @@ window.generatePreview = function() {
         html += `</tbody></table><br>`;
     }
     
-    // --- UPDATE 2: GENERAL NOTES ---
+    // --- PRINT AVOID FIX: Added 'page-break-inside: avoid; break-inside: avoid; display: block;' to ensure block stays united
     const genNotesEl = document.getElementById('inputGeneralNotes');
     const genNotesVal = genNotesEl ? genNotesEl.value : "";
     if (genNotesVal.trim() && type !== 'iteration') {
-        html += `<div style="margin-top:10px; margin-bottom:20px; background:#fdfdfd; padding:15px; border:1px solid #ddd; border-radius:5px;">
+        html += `<div style="margin-top:10px; margin-bottom:20px; background:#fdfdfd; padding:15px; border:1px solid #ddd; border-radius:5px; page-break-inside: avoid; break-inside: avoid; display: block;">
             <h4 style="margin-top:0; border-bottom:1px solid #eee; padding-bottom:5px; margin-bottom:10px;">הערות:</h4>
             <div style="white-space:pre-wrap; font-size:13px; line-height:1.5;">${genNotesVal}</div>
         </div>`;
@@ -1435,7 +1442,7 @@ window.generatePreview = function() {
              const rows = freeText.split('\n');
              rows.forEach(r => {
                  if(r.trim()) {
-                     contentHtml += `<tr>`;
+                     contentHtml += `<tr style="page-break-inside: avoid; break-inside: avoid;">`;
                      const cells = r.split('\t'); 
                      cells.forEach(c => contentHtml += `<td style="padding:5px; white-space:pre-wrap; word-break:break-word;">${c.trim()}</td>`);
                      contentHtml += `</tr>`;
@@ -1460,7 +1467,7 @@ window.generatePreview = function() {
         const releaseDate = document.getElementById('inputReleaseDate')?.value;
         let extraInfo = "";
         if (releaseDate) extraInfo = `<div style="margin-bottom:10px;"><strong>צפי גרסה:</strong> ${parseDateISO(releaseDate)}</div>`;
-        html += `<div style="background:#f9f9f9; padding:15px; border-left:4px solid #555; margin-top:20px;">
+        html += `<div style="background:#f9f9f9; padding:15px; border-left:4px solid #555; margin-top:20px; page-break-inside: avoid; break-inside: avoid; display: block;">
             ${extraInfo}
             <strong>פירוט תוכן:</strong>
             ${contentHtml}
@@ -1472,15 +1479,22 @@ window.generatePreview = function() {
     const bottomSec = document.getElementById('bottomSection');
     const totalsBox = document.getElementById('pTotalsBox');
     
+    // --- PRINT AVOID FIX: Set entire bottom wrapper to not split
+    if (bottomSec) {
+        bottomSec.style.pageBreakInside = 'avoid';
+        bottomSec.style.breakInside = 'avoid';
+    }
+
     if(type === 'iteration') {
-        bottomSec.style.display = 'none';
+        if(bottomSec) bottomSec.style.display = 'none';
     } else {
-        bottomSec.style.display = 'flex';
+        if(bottomSec) bottomSec.style.display = 'flex';
         const t = renderBuilderTable(); 
         const vat = t.setupAfterDisc * VAT_RATE;
         const totalFinal = t.setupAfterDisc + vat;
         
-        let totHtml = `<div style="border:2px solid #333; padding:15px; border-radius:8px; min-width:320px; max-width:400px; background:#fff; box-sizing:border-box;">`;
+        // --- PRINT AVOID FIX: Added to Totals box
+        let totHtml = `<div style="border:2px solid #333; padding:15px; border-radius:8px; min-width:320px; max-width:400px; background:#fff; box-sizing:border-box; page-break-inside: avoid; break-inside: avoid; display: block;">`;
         if (t.setup > 0) {
             totHtml += `<div class="total-row"><span>סה"כ הקמה:</span><span>${t.setup.toLocaleString()} ₪</span></div>`;
             if (t.discPercent > 0) totHtml += `<div class="total-row" style="color:red;"><span>הנחה (${t.discPercent}%):</span><span>-${(t.setup - t.setupAfterDisc).toLocaleString()} ₪</span></div>`;
@@ -1510,7 +1524,7 @@ window.generatePreview = function() {
             </div>`;
         }
         totHtml += `</div>`;
-        totalsBox.innerHTML = totHtml;
+        if(totalsBox) totalsBox.innerHTML = totHtml;
     }
 
     document.title = `${clientName} - ${document.getElementById('inputDocNum').value}`;
