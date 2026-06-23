@@ -13,7 +13,8 @@ const VAT_RATE = 0.18; // מע"מ 18%
 let activeClientId = null;
 let quoteItems = [];        
 let hoursScopeLines = [];   
-let currentDashFilter = ''; 
+let currentDashFilter = '';
+let currentLogoDataUrl = '';
 let autoSyncInterval = null;
 let isAutoSyncRunning = false; 
 
@@ -1291,15 +1292,78 @@ function populateGeneratorClients() {
     data.clients.forEach(c => dl.appendChild(new Option(c['Company Name'], c['Company Name']))); 
 }
 
-function fillClientFromCRM() { 
-    const name = document.getElementById('inputClientName').value.trim(); 
-    const c = data.clients.find(x => x['Company Name'] === name); 
-    if(c) { 
-        document.getElementById('genClientHP').value = c.HP||''; 
-        document.getElementById('genClientContact').value = c['Contact Person']||''; 
-        document.getElementById('genClientEmail').value = c.Email||''; 
+function fillClientFromCRM() {
+    const name = document.getElementById('inputClientName').value.trim();
+    const c = data.clients.find(x => x['Company Name'] === name);
+    if(c) {
+        document.getElementById('genClientHP').value = c.HP||'';
+        document.getElementById('genClientContact').value = c['Contact Person']||'';
+        document.getElementById('genClientEmail').value = c.Email||'';
+    }
+    // Load the saved logo (if any) for this client
+    currentLogoDataUrl = getClientLogo(name);
+    updateLogoPreviewUI();
+}
+
+// --- CLIENT LOGO (uploaded image embedded in the quote, persisted per client) ---
+function logoStorageKey(name) {
+    return 'oneflow_logo_' + String(name || '').trim();
+}
+function getClientLogo(name) {
+    if (!name) return "";
+    return localStorage.getItem(logoStorageKey(name)) || "";
+}
+function setClientLogo(name, dataUrl) {
+    if (!name) return;
+    if (dataUrl) localStorage.setItem(logoStorageKey(name), dataUrl);
+    else localStorage.removeItem(logoStorageKey(name));
+}
+
+function updateLogoPreviewUI() {
+    const wrap = document.getElementById('logoPreviewWrap');
+    const img = document.getElementById('logoPreview');
+    if (!wrap || !img) return;
+    if (currentLogoDataUrl) {
+        img.src = currentLogoDataUrl;
+        wrap.style.display = 'flex';
+    } else {
+        img.src = "";
+        wrap.style.display = 'none';
     }
 }
+
+window.handleLogoUpload = function(input) {
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+        alert("אנא בחר קובץ תמונה תקין (PNG / JPG וכו').");
+        input.value = "";
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        currentLogoDataUrl = e.target.result;
+        const name = document.getElementById('inputClientName').value.trim();
+        if (name) {
+            setClientLogo(name, currentLogoDataUrl);
+            showToast("הלוגו נשמר ללקוח");
+        } else {
+            showToast("הלוגו נטען (בחר לקוח כדי לשמור אותו)");
+        }
+        updateLogoPreviewUI();
+    };
+    reader.readAsDataURL(file);
+};
+
+window.removeClientLogo = function() {
+    const name = document.getElementById('inputClientName').value.trim();
+    setClientLogo(name, "");
+    currentLogoDataUrl = "";
+    const fileInput = document.getElementById('inputClientLogo');
+    if (fileInput) fileInput.value = "";
+    updateLogoPreviewUI();
+    showToast("הלוגו הוסר");
+};
 
 window.updateFormView = function() {
     const type = document.getElementById('docType').value;
@@ -1424,6 +1488,20 @@ window.generatePreview = function() {
     setText('pClientName', clientName);
     setText('pClientHP', document.getElementById('genClientHP').value || '-');
     setText('pContact', document.getElementById('genClientContact').value || '-');
+
+    // Client logo in the client details row
+    const logoEl = document.getElementById('pClientLogo');
+    if (logoEl) {
+        const logo = currentLogoDataUrl || getClientLogo(clientName);
+        if (logo) {
+            logoEl.src = logo;
+            logoEl.alt = clientName || "לוגו";
+            logoEl.style.display = 'block';
+        } else {
+            logoEl.src = "";
+            logoEl.style.display = 'none';
+        }
+    }
     
     setText('pDocNum', document.getElementById('inputDocNum').value);
     setText('pDate', new Date().toLocaleDateString('he-IL'));

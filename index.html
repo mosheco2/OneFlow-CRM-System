@@ -270,6 +270,17 @@
                     <label>בחר לקוח:</label><input type="text" list="dlClientsGen" id="inputClientName" placeholder="התחל להקליד..." onchange="fillClientFromCRM()" style="width:100%; padding:8px;">
                     <datalist id="dlClientsGen"></datalist>
                     <input type="hidden" id="genClientHP"><input type="hidden" id="genClientContact"><input type="hidden" id="genClientEmail">
+                    <div style="display:flex; align-items:center; gap:12px; margin-top:12px; padding-top:12px; border-top:1px dashed #90caf9;">
+                        <div>
+                            <label style="display:block; margin-bottom:4px;">לוגו הלקוח (יופיע בשורת פרטי הלקוח):</label>
+                            <input type="file" id="inputClientLogo" accept="image/*" onchange="handleLogoUpload(this)">
+                            <div style="font-size:11px; color:#666; margin-top:3px;">נשמר אוטומטית ללקוח זה.</div>
+                        </div>
+                        <div id="logoPreviewWrap" style="display:none; align-items:center; gap:8px;">
+                            <img id="logoPreview" src="" alt="לוגו" style="max-height:48px; max-width:120px; border:1px solid #ccc; border-radius:4px; background:#fff; padding:3px;">
+                            <button type="button" class="btn btn-danger btn-sm" onclick="removeClientLogo()">🗑️ הסר לוגו</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="form-group" style="display:flex; gap:10px; margin-bottom:15px;">
                     <div style="flex:1"><label>סוג מסמך:</label><select id="docType" onchange="updateFormView()" style="width:100%; padding:8px;"><option value="product_quote">הצעת מחיר - מוצר</option><option value="hours_quote">הצעת מחיר - שעות</option><option value="iteration">איטרציה</option></select></div>
@@ -438,11 +449,16 @@ graph TD
                     <span id="pExtraMeta"></span>
                 </div>
             </div>
-            <div class="client-box" style="margin-bottom:30px; background:#f9f9f9; padding:15px; border-radius:5px;">
-                <h3 style="margin-top:0;">פרטי הלקוח</h3>
-                <div>לכבוד: <strong><span id="pClientName"></span></strong></div>
-                <div>ח.פ: <span id="pClientHP"></span></div>
-                <div>לידי: <span id="pContact"></span></div>
+            <div class="client-box" style="margin-bottom:30px; background:#f9f9f9; padding:15px; border-radius:5px; display:flex; justify-content:space-between; align-items:center; gap:20px;">
+                <div class="client-box-details">
+                    <h3 style="margin-top:0;">פרטי הלקוח</h3>
+                    <div>לכבוד: <strong><span id="pClientName"></span></strong></div>
+                    <div>ח.פ: <span id="pClientHP"></span></div>
+                    <div>לידי: <span id="pContact"></span></div>
+                </div>
+                <div class="client-box-logo" style="flex-shrink:0;">
+                    <img id="pClientLogo" src="" alt="" style="display:none; max-height:80px; max-width:160px; object-fit:contain;">
+                </div>
             </div>
             <div id="pIntroText" style="margin-bottom:20px; line-height:1.6; font-size:14px;"></div>
             <div id="pContentTables"></div>
