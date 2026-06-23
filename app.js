@@ -110,18 +110,74 @@ const PRESETS = {
 };
 
 const DOC_CONFIG = {
-    'iteration': { 
-        intro: "<p>לקוח יקר,<br>במסמך זה מצורפת רשימת תכולות הכלולה במסגרת האיטרציה הנוכחית.<br>אשרו אותה בבקשה במייל חוזר ובחתימה על המסמך.<br><strong>שים לב:</strong> לא יתקבלו שינויים לתכולה לאחר חתימה על איטרציה זו.</p>", 
-        terms: "" 
+    'iteration': {
+        intro: "<p>לקוח יקר,<br>במסמך זה מצורפת רשימת תכולות הכלולה במסגרת האיטרציה הנוכחית.<br>אשרו אותה בבקשה במייל חוזר ובחתימה על המסמך.<br><strong>שים לב:</strong> לא יתקבלו שינויים לתכולה לאחר חתימה על איטרציה זו.</p>",
+        terms: "",
+        closing: ""
     },
-    'hours_quote': { 
-        intro: "<p>הננו מתכבדים להגיש הצעת מחיר עבור בנק שעות פיתוח.</p>", 
-        terms: `<h4>תנאים כלליים:</h4><ul><li>תוקף ההצעה: 14 יום.</li><li>תשלום: שוטף+30.</li><li>כל שעה נוספת מעבר לבנק השעות תחוייב לפי תעריף שעה רגיל.</li></ul>` 
+    'hours_quote': {
+        intro: "<p>הננו מתכבדים להגיש הצעת מחיר עבור בנק שעות פיתוח.</p>",
+        terms: `<h4>תנאים כלליים:</h4><ul><li>תוקף ההצעה: 14 יום.</li><li>תשלום: שוטף+30.</li><li>כל שעה נוספת מעבר לבנק השעות תחוייב לפי תעריף שעה רגיל.</li></ul>`,
+        closing: `<p>נשמח לעמוד לרשותכם בכל שאלה או הבהרה.<br>בברכה,<br><strong>צוות OneBtn</strong></p>`
     },
-    'product_quote': { 
-        intro: `<p>אנו מתכבדים להגיש הצעת מחיר לאפיון, פיתוח והטמעת מערכת <strong>OneFlow 360</strong>.<br>חברת OneBtn, המתמחה בפיתוח פלטפורמות מסחר וניהול תהליכים, חרטה על דגלה לספק ללקוחותיה טכנולוגיות מתקדמות ושירות אישי ומקצועי.</p>`, 
-        terms: TERMS_FULL_PRODUCT 
+    'product_quote': {
+        intro: `<p>אנו מתכבדים להגיש הצעת מחיר לאפיון, פיתוח והטמעת מערכת <strong>OneFlow 360</strong>.<br>חברת OneBtn, המתמחה בפיתוח פלטפורמות מסחר וניהול תהליכים, חרטה על דגלה לספק ללקוחותיה טכנולוגיות מתקדמות ושירות אישי ומקצועי.</p>`,
+        terms: TERMS_FULL_PRODUCT,
+        closing: `<p>אנו מאמינים כי שיתוף פעולה זה יניב ערך משמעותי לעסק שלכם, ונשמח ללוות אתכם לאורך כל הדרך.<br>לכל שאלה או הבהרה נשמח לעמוד לרשותכם.<br>בברכה,<br><strong>צוות OneBtn</strong></p>`
     }
+};
+
+// --- TEMPLATE OVERRIDES (Editable per document type, persisted in localStorage) ---
+function getTemplate(type) {
+    const cfg = DOC_CONFIG[type] || {};
+    const def = { intro: cfg.intro || "", terms: cfg.terms || "", closing: cfg.closing || "" };
+    try {
+        const saved = JSON.parse(localStorage.getItem('oneflow_tpl_' + type) || '{}');
+        return {
+            intro:   (saved.intro   != null) ? saved.intro   : def.intro,
+            terms:   (saved.terms   != null) ? saved.terms   : def.terms,
+            closing: (saved.closing != null) ? saved.closing : def.closing
+        };
+    } catch(e) { return def; }
+}
+
+// Loads the saved/default template text into the editor textareas for the given type
+function loadTemplateEditor(type) {
+    const tpl = getTemplate(type);
+    const intoEl = document.getElementById('tplIntro');
+    const termsEl = document.getElementById('tplTerms');
+    const closeEl = document.getElementById('tplClosing');
+    if (intoEl)  intoEl.value  = tpl.intro;
+    if (termsEl) termsEl.value = tpl.terms;
+    if (closeEl) closeEl.value = tpl.closing;
+}
+
+// Reads template text for preview: live textarea values if present, otherwise saved/default
+function getActiveTemplate(type) {
+    const tpl = getTemplate(type);
+    if (document.getElementById('tplIntro'))   tpl.intro   = getValue('tplIntro');
+    if (document.getElementById('tplTerms'))   tpl.terms   = getValue('tplTerms');
+    if (document.getElementById('tplClosing')) tpl.closing = getValue('tplClosing');
+    return tpl;
+}
+
+window.saveTemplate = function() {
+    const type = document.getElementById('docType').value;
+    const obj = {
+        intro:   getValue('tplIntro'),
+        terms:   getValue('tplTerms'),
+        closing: getValue('tplClosing')
+    };
+    localStorage.setItem('oneflow_tpl_' + type, JSON.stringify(obj));
+    showToast("התבנית נשמרה ✓");
+};
+
+window.resetTemplate = function() {
+    const type = document.getElementById('docType').value;
+    if (!confirm("לאפס את תבנית המסמך לברירת המחדל? השינויים שנשמרו יימחקו.")) return;
+    localStorage.removeItem('oneflow_tpl_' + type);
+    loadTemplateEditor(type);
+    showToast("התבנית אופסה לברירת המחדל");
 };
 
 const ITERATION_STEPS = [
@@ -1270,6 +1326,10 @@ window.updateFormView = function() {
         sel.innerHTML = '<option value="">-- בחר פריט --</option>';
         PRESETS[type].forEach((p, i) => sel.add(new Option(p.name, i)));
     }
+
+    // Load the editable template (intro / terms / closing) for the selected doc type
+    loadTemplateEditor(type);
+
     quoteItems = []; renderBuilderTable();
 }
 
@@ -1371,12 +1431,24 @@ window.generatePreview = function() {
     const type = document.getElementById('docType').value;
     if(type === 'hours_quote') parseQuotePaste();
 
-    document.getElementById('pIntroText').innerHTML = DOC_CONFIG[type].intro;
-    
+    // Use the editable template (live textarea values, falling back to saved/default)
+    const tpl = getActiveTemplate(type);
+
+    document.getElementById('pIntroText').innerHTML = tpl.intro;
+
+    // טקסט סוגר את ההצעה (closing text)
+    const closingEl = document.getElementById('pClosingText');
+    if (closingEl) {
+        closingEl.innerHTML = tpl.closing || "";
+        closingEl.style.display = (tpl.closing && tpl.closing.trim()) ? 'block' : 'none';
+        closingEl.style.pageBreakInside = 'avoid';
+        closingEl.style.breakInside = 'avoid';
+    }
+
     // אבטחת מניעת חיתוך של אזור התנאים
     const termsEl = document.getElementById('pTerms');
     if (termsEl) {
-        termsEl.innerHTML = DOC_CONFIG[type].terms;
+        termsEl.innerHTML = tpl.terms;
         termsEl.style.pageBreakInside = 'avoid';
         termsEl.style.breakInside = 'avoid';
     }

@@ -297,7 +297,30 @@
                     <label style="font-weight:bold;">הערות כלליות להצעה (יופיעו במסמך המודפס):</label>
                     <textarea id="inputGeneralNotes" rows="3" placeholder="הזן כאן הערות כלליות, סיכומים מיוחדים וכו'..." style="width:100%; margin-top:5px;"></textarea>
                 </div>
-                
+
+                <details id="areaTemplateEditor" style="margin-top:15px; background:#eef7ff; border-radius:5px; border:1px solid #b3d7ff;">
+                    <summary style="cursor:pointer; padding:12px 15px; font-weight:bold; color:#0056b3;">✏️ עריכת תבנית המסמך (טקסט מקדים, תנאי ההסכם וטקסט סוגר)</summary>
+                    <div style="padding:0 15px 15px 15px;">
+                        <p style="font-size:12px; color:#666; margin-top:0;">ניתן להשתמש בתגיות HTML לעיצוב (כותרות &lt;h4&gt;, רשימות &lt;ul&gt;&lt;li&gt;, מעבר שורה &lt;br&gt; וכו'). התבנית נשמרת בנפרד לכל סוג מסמך.</p>
+                        <div style="margin-bottom:12px;">
+                            <label style="font-weight:bold; display:block; margin-bottom:4px;">טקסט מקדים (פתיח ההצעה):</label>
+                            <textarea id="tplIntro" rows="4" style="width:100%; font-family:monospace; font-size:12px;" dir="rtl"></textarea>
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <label style="font-weight:bold; display:block; margin-bottom:4px;">תנאי ההסכם (Terms):</label>
+                            <textarea id="tplTerms" rows="8" style="width:100%; font-family:monospace; font-size:12px;" dir="rtl"></textarea>
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <label style="font-weight:bold; display:block; margin-bottom:4px;">טקסט סוגר (סיום ההצעה):</label>
+                            <textarea id="tplClosing" rows="3" style="width:100%; font-family:monospace; font-size:12px;" dir="rtl"></textarea>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn btn-success btn-sm" onclick="saveTemplate()">💾 שמור תבנית</button>
+                            <button class="btn btn-warning btn-sm" onclick="resetTemplate()">↺ אפס לברירת מחדל</button>
+                        </div>
+                    </div>
+                </details>
+
                 <div id="areaBuilder" style="margin-top: 15px;">
                     <h3>בניית הצעת מחיר</h3>
                     <div class="add-item-box" style="background:#f1f8ff; padding:15px; border:1px solid #b3d7ff;">
@@ -433,6 +456,7 @@ graph TD
                 </div>
                 <div class="totals-section" id="pTotalsBox"></div>
             </div>
+            <div id="pClosingText" style="margin-top:30px; line-height:1.6; font-size:13px;"></div>
             <div id="pTerms" style="margin-top:40px; font-size:11px; border-top:1px solid #ccc; padding-top:10px;"></div>
             
             <div class="approval-box" style="margin-top:60px; text-align:center; page-break-inside:avoid;">
