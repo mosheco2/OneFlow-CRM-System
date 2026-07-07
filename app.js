@@ -15,6 +15,7 @@ let quoteItems = [];
 let hoursScopeLines = [];   
 let currentDashFilter = '';
 let currentLogoDataUrl = '';
+let dupSourceTransId = null;
 let autoSyncInterval = null;
 let isAutoSyncRunning = false; 
 
@@ -954,19 +955,31 @@ window.viewQuoteAsPDF = function(transId) {
     updateFormView();
 
     // פיענוח הפריטים שנשמרו
+    let parsedItems;
     try {
-        quoteItems = JSON.parse(q.ItemsJSON || "[]");
+        parsedItems = JSON.parse(q.ItemsJSON || "[]");
     } catch(e) {
-        quoteItems = [];
+        parsedItems = [];
     }
 
     // אם זה טקסט חופשי, עדכן את תיבת הטקסט
     if (dType === 'hours_quote') {
+        quoteItems = Array.isArray(parsedItems) ? parsedItems : [];
         document.getElementById('inputPasteQuote').value = quoteItems.map(i => i.name).join('\n');
         parseQuotePaste();
     } else if (dType === 'iteration') {
-        document.getElementById('inputPasteIter').value = quoteItems.map(i => i.name).join('\n');
+        // New format: object with full text + meta. Legacy: array of line-items.
+        if (parsedItems && parsedItems.__iter) {
+            document.getElementById('inputPasteIter').value = parsedItems.text || "";
+            if (document.getElementById('inputReleaseDate')) document.getElementById('inputReleaseDate').value = parsedItems.releaseDate || "";
+            if (document.getElementById('inputIterNum')) document.getElementById('inputIterNum').value = parsedItems.iterNum || "";
+        } else {
+            const arr = Array.isArray(parsedItems) ? parsedItems : [];
+            document.getElementById('inputPasteIter').value = arr.map(i => i.name).join('\n');
+        }
         parseIterationText();
+    } else {
+        quoteItems = Array.isArray(parsedItems) ? parsedItems : [];
     }
 
     // איפוס הנחה ל-0 כברירת מחדל (ניתן לעדכון ידני אח"כ)
@@ -988,49 +1001,66 @@ function renderClientQuotes() {
     if(!tbody) return;
     tbody.innerHTML = "";
     
-    const quotes = data.finance.filter(f => 
-        cleanID(f.ClientID) === activeClientId && 
-        ['product_quote', 'hours_quote', 'הצעת מחיר'].some(t => String(f.DocType).includes(t))
+    const quotes = data.finance.filter(f =>
+        cleanID(f.ClientID) === activeClientId &&
+        ['product_quote', 'hours_quote', 'הצעת מחיר', 'iteration', 'איטרציה'].some(t => String(f.DocType).includes(t))
     );
-    
+
     quotes.sort((a,b) => new Date(b.PaymentDate) - new Date(a.PaymentDate));
 
     if(quotes.length === 0) {
-        tbody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>אין הצעות מחיר</td></tr>";
+        tbody.innerHTML = "<tr><td colspan='7' style='text-align:center;'>אין מסמכים</td></tr>";
         return;
     }
 
     quotes.forEach(q => {
+        const isIter = isIterationDoc(q);
         let contentSummary = "פירוט...";
         try {
-            const items = JSON.parse(q.ItemsJSON || "[]");
-            contentSummary = items.map(i => i.name).join(", ");
+            const parsed = JSON.parse(q.ItemsJSON || "[]");
+            if (parsed && parsed.__iter) {
+                contentSummary = (parsed.text || "").replace(/\n+/g, ' · ');
+            } else if (Array.isArray(parsed)) {
+                contentSummary = parsed.map(i => i.name).join(", ");
+            }
             if(contentSummary.length > 50) contentSummary = contentSummary.substring(0,50) + "...";
         } catch(e) {}
 
-        const statusSelect = `
-            <select class="quote-status-sel" data-id="${q.TransID}">
-                <option ${q.Status==='הצעת מחיר'?'selected':''}>הצעת מחיר</option>
-                <option ${q.Status==='אושרה'?'selected':''}>אושרה</option>
-                <option ${q.Status==='נדחתה'?'selected':''}>נדחתה</option>
-                <option ${q.Status==='בוטל'?'selected':''}>בוטל</option>
-            </select>
-        `;
+        // Iterations use a documentation status; quotes use the sales pipeline statuses
+        const statusCell = isIter
+            ? `<span class="status-badge">${q.Status || 'תיעוד בלבד'}</span>`
+            : `<select class="quote-status-sel" data-id="${q.TransID}">
+                    <option ${q.Status==='הצעת מחיר'?'selected':''}>הצעת מחיר</option>
+                    <option ${q.Status==='אושרה'?'selected':''}>אושרה</option>
+                    <option ${q.Status==='נדחתה'?'selected':''}>נדחתה</option>
+                    <option ${q.Status==='בוטל'?'selected':''}>בוטל</option>
+               </select>`;
+
+        const typeBadge = isIter
+            ? `<span class="status-badge" style="background:#fff3cd; color:#856404;">איטרציה</span>`
+            : `<span class="status-badge" style="background:#d1ecf1; color:#0c5460;">הצעה</span>`;
 
         tbody.innerHTML += `
             <tr>
                 <td>${parseDateISO(q.PaymentDate)}</td>
-                <td><a href="#" onclick="viewQuoteAsPDF('${q.TransID}')" title="צפה בהצעה">#${q.DocNum}</a></td>
-                <td>${parseFloat(q.Amount).toLocaleString()} ₪</td>
-                <td>${statusSelect}</td>
+                <td>${typeBadge}</td>
+                <td><a href="#" onclick="viewQuoteAsPDF('${q.TransID}'); return false;" title="צפה/ערוך">#${q.DocNum}</a></td>
+                <td>${parseFloat(q.Amount||0).toLocaleString()} ₪</td>
+                <td>${statusCell}</td>
                 <td style="font-size:11px; color:#555;">${contentSummary}</td>
-                <td>
-                    <button class="btn btn-sm btn-primary" onclick="viewQuoteAsPDF('${q.TransID}')" title="הצג תצוגה מקדימה והדפס">🖨️ צפה</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteFinanceItem('${q.TransID}')">X</button>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-sm btn-primary" onclick="viewQuoteAsPDF('${q.TransID}')" title="צפה / ערוך">🖨️ צפה</button>
+                    <button class="btn btn-sm btn-warning" onclick="duplicateDocument('${q.TransID}')" title="שכפל ללקוח אחר">⧉ שכפל</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteFinanceItem('${q.TransID}')" title="מחק">X</button>
                 </td>
             </tr>
         `;
     });
+}
+
+// True if a finance record represents an iteration document
+function isIterationDoc(f) {
+    return String(f.DocType).includes('iteration') || String(f.DocType).includes('איטרציה');
 }
 
 window.saveQuotesChanges = async function() {
@@ -1790,20 +1820,34 @@ window.saveDealFromGenerator = async function() {
         if(type === 'iteration') typeName = 'איטרציה';
         if(type === 'hours_quote') typeName = 'בנק שעות';
         
+        const iterNum = (type === 'iteration') ? (getValue('inputIterNum') || '') : '';
         let desc = `#${docNum} - ${typeName} - ${clientName}`;
-        if(type === 'iteration') desc += ` (מס' ${document.getElementById('inputIterNum').value})`;
+        if(type === 'iteration') desc += ` (מס' ${iterNum})`;
 
-        const payload = { 
-            TransID: 'T' + Date.now(), 
-            ClientID: cleanID(clientObj.ClientID), 
-            ClientName: clientName, 
-            DocType: type, 
-            DocNum: docNum, 
-            Amount: (type === 'iteration') ? 0 : t.setupAfterDisc, 
-            PaymentDate: new Date().toISOString(), 
-            Status: (type === 'iteration') ? 'תיעוד בלבד' : 'הצעת מחיר', 
+        // For iterations, persist the full free-text content (+ meta) so it can be edited later
+        let itemsJson;
+        if (type === 'iteration') {
+            itemsJson = JSON.stringify({
+                __iter: true,
+                text: getValue('inputPasteIter') || "",
+                releaseDate: getValue('inputReleaseDate') || "",
+                iterNum: iterNum
+            });
+        } else {
+            itemsJson = JSON.stringify(quoteItems);
+        }
+
+        const payload = {
+            TransID: 'T' + Date.now(),
+            ClientID: cleanID(clientObj.ClientID),
+            ClientName: clientName,
+            DocType: type,
+            DocNum: docNum,
+            Amount: (type === 'iteration') ? 0 : t.setupAfterDisc,
+            PaymentDate: new Date().toISOString(),
+            Status: (type === 'iteration') ? 'תיעוד בלבד' : 'הצעת מחיר',
             Description: desc,
-            ItemsJSON: JSON.stringify(quoteItems) 
+            ItemsJSON: itemsJson
         };
         await sendToGAS('addFinance', payload);
         await refreshData(true); 
@@ -1818,7 +1862,107 @@ window.createNewQuoteFromClient = function() {
     document.getElementById('clientModal').style.display = 'none';
     switchView('generator', document.querySelector('.nav-btn[onclick*="generator"]'));
     document.getElementById('inputClientName').value = client['Company Name'];
-    fillClientFromCRM(); 
+    fillClientFromCRM();
+};
+
+// Delete a finance/document record by TransID (was referenced but never defined)
+window.deleteFinanceItem = async function(transId) {
+    if (!transId) return;
+    if (!confirm("למחוק את המסמך/התנועה? פעולה זו אינה הפיכה.")) return;
+    showLoader();
+    try {
+        const res = await sendToGAS('deleteItem', { sheet: 'Finance_Log', idVal: transId, idCol: 'TransID' });
+        if (res && res.status === 'error') throw new Error(res.message);
+        await refreshData(true);
+        showToast("נמחק");
+    } catch(e) { alert("שגיאה במחיקה: " + e.message); } finally { hideLoader(); }
+};
+
+// Next available document number across all saved finance records
+function getNextDocNum() {
+    let max = START_DOC_NUM - 1;
+    (data.finance || []).forEach(f => {
+        const n = parseInt(f.DocNum, 10);
+        if (!isNaN(n) && n > max) max = n;
+    });
+    return max + 1;
+}
+
+// --- DUPLICATE A DOCUMENT (quote or iteration) TO ANOTHER CLIENT ---
+function createDuplicateModal() {
+    if (document.getElementById('duplicateModal')) return;
+    const div = document.createElement('div');
+    div.id = 'duplicateModal';
+    div.style.cssText = "display:none; position:fixed; z-index:10001; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5);";
+    div.innerHTML = `
+        <div style="background:#fff; max-width:460px; margin:12% auto; padding:20px; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.25);">
+            <h3 style="margin-top:0;">שכפול מסמך ללקוח אחר</h3>
+            <p id="dupSourceInfo" style="font-size:13px; color:#555;"></p>
+            <label style="font-weight:bold; display:block; margin-bottom:5px;">בחר לקוח יעד:</label>
+            <select id="dupTargetClient" style="width:100%; padding:8px; margin-bottom:15px;"></select>
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button class="btn btn-danger btn-sm" onclick="document.getElementById('duplicateModal').style.display='none'">ביטול</button>
+                <button class="btn btn-success btn-sm" onclick="confirmDuplicateDocument()">⧉ שכפל</button>
+            </div>
+        </div>`;
+    document.body.appendChild(div);
+}
+
+window.duplicateDocument = function(transId) {
+    createDuplicateModal();
+    dupSourceTransId = transId;
+    const src = data.finance.find(f => f.TransID === transId);
+    if (!src) return alert("מסמך לא נמצא");
+    document.getElementById('dupSourceInfo').innerText =
+        `מקור: #${src.DocNum || ''} · ${isIterationDoc(src) ? 'איטרציה' : 'הצעת מחיר'} · ${src.ClientName || ''}`;
+    const sel = document.getElementById('dupTargetClient');
+    sel.innerHTML = '';
+    data.clients.slice()
+        .sort((a,b) => String(a['Company Name']||'').localeCompare(String(b['Company Name']||''), 'he'))
+        .forEach(c => sel.add(new Option(c['Company Name'], cleanID(c.ClientID))));
+    document.getElementById('duplicateModal').style.display = 'block';
+};
+
+window.confirmDuplicateDocument = async function() {
+    const sel = document.getElementById('dupTargetClient');
+    const targetId = sel ? sel.value : "";
+    if (!targetId) return alert("בחר לקוח יעד");
+
+    const src = data.finance.find(f => f.TransID === dupSourceTransId);
+    if (!src) return alert("מסמך המקור לא נמצא");
+    const target = data.clients.find(c => cleanID(c.ClientID) === cleanID(targetId));
+    if (!target) return alert("לקוח יעד לא נמצא");
+
+    const isIter = isIterationDoc(src);
+    const newDocNum = getNextDocNum();
+    const typeName = isIter ? 'איטרציה' : (String(src.DocType).includes('hours') ? 'בנק שעות' : 'הצעת מחיר');
+
+    let desc = `#${newDocNum} - ${typeName} - ${target['Company Name']}`;
+    if (isIter) {
+        try { const p = JSON.parse(src.ItemsJSON || '{}'); if (p && p.__iter && p.iterNum) desc += ` (מס' ${p.iterNum})`; } catch(e) {}
+    }
+
+    const payload = {
+        TransID: 'T' + Date.now(),
+        ClientID: cleanID(target.ClientID),
+        ClientName: target['Company Name'],
+        DocType: src.DocType,
+        DocNum: newDocNum,
+        Amount: src.Amount || 0,
+        PaymentDate: new Date().toISOString(),
+        Status: isIter ? 'תיעוד בלבד' : 'הצעת מחיר',
+        Description: desc,
+        ItemsJSON: src.ItemsJSON || (isIter ? '{}' : '[]')
+    };
+
+    document.getElementById('duplicateModal').style.display = 'none';
+    showLoader();
+    try {
+        const res = await sendToGAS('addFinance', payload);
+        if (res && res.status === 'error') throw new Error(res.message);
+        await refreshData(true);
+        showToast(`המסמך שוכפל ללקוח: ${target['Company Name']}`);
+    } catch(e) { alert("שגיאה בשכפול: " + e.message); } finally { hideLoader(); }
 };
 
 function parseIterationText() {
