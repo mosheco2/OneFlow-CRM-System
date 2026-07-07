@@ -153,6 +153,14 @@ function loadTemplateEditor(type) {
     if (closeEl) closeEl.value = tpl.closing;
 }
 
+// Renders template text for the printed doc: if the user typed plain text,
+// preserve their line breaks/spacing; if they used HTML tags, respect them as-is.
+function renderTemplateHtml(txt) {
+    if (!txt) return "";
+    if (/<[a-z!\/][^>]*>/i.test(txt)) return txt; // contains HTML markup -> keep as authored
+    return txt.replace(/\n/g, '<br>');            // plain text -> keep line breaks
+}
+
 // Reads template text for preview: live textarea values if present, otherwise saved/default
 function getActiveTemplate(type) {
     const tpl = getTemplate(type);
@@ -1512,12 +1520,12 @@ window.generatePreview = function() {
     // Use the editable template (live textarea values, falling back to saved/default)
     const tpl = getActiveTemplate(type);
 
-    document.getElementById('pIntroText').innerHTML = tpl.intro;
+    document.getElementById('pIntroText').innerHTML = renderTemplateHtml(tpl.intro);
 
     // טקסט סוגר את ההצעה (closing text)
     const closingEl = document.getElementById('pClosingText');
     if (closingEl) {
-        closingEl.innerHTML = tpl.closing || "";
+        closingEl.innerHTML = renderTemplateHtml(tpl.closing);
         closingEl.style.display = (tpl.closing && tpl.closing.trim()) ? 'block' : 'none';
         closingEl.style.pageBreakInside = 'avoid';
         closingEl.style.breakInside = 'avoid';
@@ -1526,7 +1534,7 @@ window.generatePreview = function() {
     // אבטחת מניעת חיתוך של אזור התנאים
     const termsEl = document.getElementById('pTerms');
     if (termsEl) {
-        termsEl.innerHTML = tpl.terms;
+        termsEl.innerHTML = renderTemplateHtml(tpl.terms);
         termsEl.style.pageBreakInside = 'avoid';
         termsEl.style.breakInside = 'avoid';
     }
