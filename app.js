@@ -142,17 +142,6 @@ function getTemplate(type) {
     } catch(e) { return def; }
 }
 
-// Loads the saved/default template text into the editor textareas for the given type
-function loadTemplateEditor(type) {
-    const tpl = getTemplate(type);
-    const intoEl = document.getElementById('tplIntro');
-    const termsEl = document.getElementById('tplTerms');
-    const closeEl = document.getElementById('tplClosing');
-    if (intoEl)  intoEl.value  = tpl.intro;
-    if (termsEl) termsEl.value = tpl.terms;
-    if (closeEl) closeEl.value = tpl.closing;
-}
-
 // Renders template text for the printed doc: if the user typed plain text,
 // preserve their line breaks/spacing; if they used HTML tags, respect them as-is.
 function renderTemplateHtml(txt) {
@@ -161,21 +150,109 @@ function renderTemplateHtml(txt) {
     return txt.replace(/\n/g, '<br>');            // plain text -> keep line breaks
 }
 
-// Reads template text for preview: live textarea values if present, otherwise saved/default
+// Read/write helpers that work for both contenteditable editors and plain inputs
+function tplGetValue(id) {
+    const el = document.getElementById(id);
+    if (!el) return "";
+    if (el.getAttribute('contenteditable') !== null) {
+        const html = el.innerHTML.trim();
+        return (html === '<br>' || html === '<br/>') ? '' : html;
+    }
+    return el.value || "";
+}
+function tplSetValue(id, val) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.getAttribute('contenteditable') !== null) el.innerHTML = renderTemplateHtml(val);
+    else el.value = val || "";
+}
+
+// Loads the saved/default template text into the editors for the given type
+function loadTemplateEditor(type) {
+    const tpl = getTemplate(type);
+    tplSetValue('tplIntro', tpl.intro);
+    tplSetValue('tplTerms', tpl.terms);
+    tplSetValue('tplClosing', tpl.closing);
+}
+
+// Reads template text for preview: live editor values if present, otherwise saved/default
 function getActiveTemplate(type) {
     const tpl = getTemplate(type);
-    if (document.getElementById('tplIntro'))   tpl.intro   = getValue('tplIntro');
-    if (document.getElementById('tplTerms'))   tpl.terms   = getValue('tplTerms');
-    if (document.getElementById('tplClosing')) tpl.closing = getValue('tplClosing');
+    if (document.getElementById('tplIntro'))   tpl.intro   = tplGetValue('tplIntro');
+    if (document.getElementById('tplTerms'))   tpl.terms   = tplGetValue('tplTerms');
+    if (document.getElementById('tplClosing')) tpl.closing = tplGetValue('tplClosing');
     return tpl;
+}
+
+// --- Lightweight WYSIWYG editor toolbar (no external libs) ---
+function initRichEditor(id) {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.rteReady) return;
+    el.dataset.rteReady = '1';
+
+    let savedRange = null;
+    el.addEventListener('keyup', saveSel);
+    el.addEventListener('mouseup', saveSel);
+    el.addEventListener('blur', saveSel);
+    function saveSel() {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) savedRange = sel.getRangeAt(0);
+    }
+    function restoreSel() {
+        el.focus();
+        if (savedRange) {
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(savedRange);
+        }
+    }
+    function run(cmd, val) { restoreSel(); document.execCommand(cmd, false, val || null); saveSel(); }
+
+    const tb = document.createElement('div');
+    tb.className = 'rte-toolbar';
+    tb.innerHTML =
+        '<button type="button" title="מודגש" data-cmd="bold" style="font-weight:bold;">B</button>' +
+        '<button type="button" title="נטוי" data-cmd="italic" style="font-style:italic;">I</button>' +
+        '<button type="button" title="קו תחתון" data-cmd="underline" style="text-decoration:underline;">U</button>' +
+        '<span class="rte-sep"></span>' +
+        '<select title="גודל טקסט" data-role="size"><option value="">גודל</option><option value="2">קטן</option><option value="3">רגיל</option><option value="5">גדול</option><option value="6">גדול מאוד</option><option value="7">ענק</option></select>' +
+        '<input type="color" title="צבע טקסט" data-role="color" value="#333333">' +
+        '<span class="rte-sep"></span>' +
+        '<button type="button" title="כותרת" data-cmd="formatBlock" data-val="H4">כותרת</button>' +
+        '<button type="button" title="רשימת תבליטים" data-cmd="insertUnorderedList">• רשימה</button>' +
+        '<button type="button" title="רשימה ממוספרת" data-cmd="insertOrderedList">1. רשימה</button>' +
+        '<span class="rte-sep"></span>' +
+        '<button type="button" title="נקה עיצוב" data-cmd="removeFormat">נקה עיצוב</button>';
+
+    // Prevent toolbar clicks from stealing the editor selection
+    tb.addEventListener('mousedown', function(e) { e.preventDefault(); });
+
+    tb.querySelectorAll('button[data-cmd]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            run(btn.dataset.cmd, btn.dataset.val);
+        });
+    });
+    const sizeSel = tb.querySelector('select[data-role="size"]');
+    sizeSel.addEventListener('change', function() {
+        if (sizeSel.value) run('fontSize', sizeSel.value);
+        sizeSel.value = '';
+    });
+    const colorInp = tb.querySelector('input[data-role="color"]');
+    colorInp.addEventListener('input', function() { run('foreColor', colorInp.value); });
+
+    el.parentNode.insertBefore(tb, el);
+}
+function initTemplateEditors() {
+    ['tplIntro', 'tplTerms', 'tplClosing'].forEach(initRichEditor);
 }
 
 window.saveTemplate = function() {
     const type = document.getElementById('docType').value;
     const obj = {
-        intro:   getValue('tplIntro'),
-        terms:   getValue('tplTerms'),
-        closing: getValue('tplClosing')
+        intro:   tplGetValue('tplIntro'),
+        terms:   tplGetValue('tplTerms'),
+        closing: tplGetValue('tplClosing')
     };
     localStorage.setItem('oneflow_tpl_' + type, JSON.stringify(obj));
     showToast("התבנית נשמרה ✓");
@@ -271,6 +348,7 @@ window.switchView = function(viewId, btn) {
 
 window.onload = async function() {
     createItemModal(); // Initialize the popup modal
+    initTemplateEditors(); // Attach WYSIWYG toolbars to the template editors
     const impTxt = document.getElementById('importText');
     if(impTxt) {
         impTxt.placeholder = "הדבק כאן את הטבלה מאקסל (כולל שורת כותרות).\nהמערכת תזהה את העמודות לפי הכותרות:\nשם חברה | סטטוס | תשלום | צפי | סוג | אסמכתא | תיאור | סכום | תאריך | ח.פ";

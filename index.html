@@ -167,6 +167,17 @@
         .iter-card:hover { background: #f8f9fa; }
         .iter-header { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
         .status-badge { font-size: 11px; background: #e9ecef; padding: 3px 10px; border-radius: 12px; font-weight: bold; }
+
+        /* Rich Text Editor (WYSIWYG) */
+        .rte-toolbar { display:flex; flex-wrap:wrap; gap:4px; align-items:center; background:#f1f3f5; border:1px solid #ced4da; border-bottom:none; border-radius:4px 4px 0 0; padding:5px; }
+        .rte-toolbar button { background:#fff; border:1px solid #ced4da; border-radius:3px; min-width:30px; height:28px; cursor:pointer; font-size:13px; padding:0 6px; line-height:1; }
+        .rte-toolbar button:hover { background:#e9ecef; }
+        .rte-toolbar select { height:28px; border:1px solid #ced4da; border-radius:3px; background:#fff; font-size:12px; }
+        .rte-toolbar input[type="color"] { width:32px; height:28px; padding:1px; border:1px solid #ced4da; border-radius:3px; cursor:pointer; background:#fff; }
+        .rte-toolbar .rte-sep { width:1px; height:20px; background:#ced4da; margin:0 3px; }
+        .rte { border:1px solid #ced4da; border-radius:0 0 4px 4px; padding:10px; min-height:80px; background:#fff; font-size:14px; line-height:1.6; overflow-y:auto; }
+        .rte:focus { outline:none; border-color:#80bdff; box-shadow:0 0 0 0.2rem rgba(0,123,255,.15); }
+        .rte:empty:before { content: attr(data-placeholder); color:#adb5bd; }
     </style>
 
     <script type="module">
@@ -312,18 +323,18 @@
                 <details id="areaTemplateEditor" style="margin-top:15px; background:#eef7ff; border-radius:5px; border:1px solid #b3d7ff;">
                     <summary style="cursor:pointer; padding:12px 15px; font-weight:bold; color:#0056b3;">✏️ עריכת תבנית המסמך (טקסט מקדים, תנאי ההסכם וטקסט סוגר)</summary>
                     <div style="padding:0 15px 15px 15px;">
-                        <p style="font-size:12px; color:#666; margin-top:0;">ניתן להשתמש בתגיות HTML לעיצוב (כותרות &lt;h4&gt;, רשימות &lt;ul&gt;&lt;li&gt;, מעבר שורה &lt;br&gt; וכו'). התבנית נשמרת בנפרד לכל סוג מסמך.</p>
+                        <p style="font-size:12px; color:#666; margin-top:0;">עצבו את הטקסט בעזרת סרגל הכלים (הדגשה, גודל תו, צבע, רשימות ועוד). העיצוב יופיע במסמך המודפס. התבנית נשמרת בנפרד לכל סוג מסמך.</p>
                         <div style="margin-bottom:12px;">
                             <label style="font-weight:bold; display:block; margin-bottom:4px;">טקסט מקדים (פתיח ההצעה):</label>
-                            <textarea id="tplIntro" rows="4" style="width:100%; font-family:monospace; font-size:12px;" dir="rtl"></textarea>
+                            <div id="tplIntro" class="rte" contenteditable="true" dir="rtl" style="min-height:90px;" data-placeholder="הקלד כאן את פתיח ההצעה..."></div>
                         </div>
                         <div style="margin-bottom:12px;">
                             <label style="font-weight:bold; display:block; margin-bottom:4px;">תנאי ההסכם (Terms):</label>
-                            <textarea id="tplTerms" rows="8" style="width:100%; font-family:monospace; font-size:12px;" dir="rtl"></textarea>
+                            <div id="tplTerms" class="rte" contenteditable="true" dir="rtl" style="min-height:180px;" data-placeholder="הקלד כאן את תנאי ההסכם..."></div>
                         </div>
                         <div style="margin-bottom:12px;">
                             <label style="font-weight:bold; display:block; margin-bottom:4px;">טקסט סוגר (סיום ההצעה):</label>
-                            <textarea id="tplClosing" rows="3" style="width:100%; font-family:monospace; font-size:12px;" dir="rtl"></textarea>
+                            <div id="tplClosing" class="rte" contenteditable="true" dir="rtl" style="min-height:70px;" data-placeholder="הקלד כאן את הטקסט הסוגר..."></div>
                         </div>
                         <div style="display:flex; gap:10px;">
                             <button class="btn btn-success btn-sm" onclick="saveTemplate()">💾 שמור תבנית</button>
