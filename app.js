@@ -1642,7 +1642,10 @@ window.generatePreview = function() {
     // אבטחת מניעת חיתוך של אזור התנאים
     const termsEl = document.getElementById('pTerms');
     if (termsEl) {
-        termsEl.innerHTML = renderTemplateHtml(tpl.terms);
+        const termsHtml = renderTemplateHtml(tpl.terms);
+        termsEl.innerHTML = termsHtml;
+        // הסתרה כשריק (למשל באיטרציה) כדי לא להשאיר קו/מרווח מיותר
+        termsEl.style.display = (termsHtml && termsHtml.trim()) ? 'block' : 'none';
         termsEl.style.pageBreakInside = 'avoid';
         termsEl.style.breakInside = 'avoid';
     }
@@ -1717,19 +1720,19 @@ window.generatePreview = function() {
              contentHtml += `</tbody></table>`;
         } else {
              const rawLines = freeText.split(/(?:\r\n|\r|\n)/g);
-             contentHtml += `<ol style="line-height:1.6; padding-right:20px; margin-top:10px;">`;
-             let pendingBlank = 0; // כמה שורות ריקות הצטברו לפני הפריט הבא
+             contentHtml += `<ol style="line-height:1.45; padding-right:20px; margin-top:8px;">`;
+             let pendingBlank = false; // האם קדמה שורה ריקה לפריט הבא
              rawLines.forEach(line => {
-                 // שורה ריקה = רווח שהמשתמש הזין בכוונה — נשמור אותו כרווח אנכי
-                 if (!line.trim()) { pendingBlank++; return; }
+                 // שורה ריקה = רווח מכוון — נוסיף רווח מתון אחד, בלי הצטברות
+                 if (!line.trim()) { pendingBlank = true; return; }
                  let l = line.trim();
                  if (l.startsWith('"') && l.endsWith('"')) {
                      l = l.substring(1, l.length - 1);
                      l = l.replace(/""/g, '"');
                  }
-                 const extraTop = pendingBlank > 0 ? (pendingBlank * 14) : 0;
-                 contentHtml += `<li style="margin-bottom:8px; margin-top:${extraTop}px; page-break-inside:avoid; white-space:pre-wrap; word-break:break-word;">${l}</li>`;
-                 pendingBlank = 0;
+                 const extraTop = pendingBlank ? 10 : 0; // רווח קבוע, לא מצטבר
+                 contentHtml += `<li style="margin-bottom:5px; margin-top:${extraTop}px; page-break-inside:avoid; white-space:pre-wrap; word-break:break-word;">${l}</li>`;
+                 pendingBlank = false;
              });
              contentHtml += `</ol>`;
         }
@@ -1737,7 +1740,8 @@ window.generatePreview = function() {
         const releaseDate = document.getElementById('inputReleaseDate')?.value;
         let extraInfo = "";
         if (releaseDate) extraInfo = `<div style="margin-bottom:10px;"><strong>צפי גרסה:</strong> ${parseDateISO(releaseDate)}</div>`;
-        html += `<div style="background:#f9f9f9; padding:15px; border-left:4px solid #555; margin-top:20px; page-break-inside: avoid; break-inside: avoid; display: block;">
+        // ללא break-inside:avoid על העטיפה כדי שתוכן ארוך יזרום בין דפים ולא ישאיר חלל לבן
+        html += `<div style="background:#f9f9f9; padding:15px; border-right:4px solid #555; margin-top:15px;">
             ${extraInfo}
             <strong>פירוט תוכן:</strong>
             ${contentHtml}
@@ -1753,6 +1757,17 @@ window.generatePreview = function() {
     if (bottomSec) {
         bottomSec.style.pageBreakInside = 'avoid';
         bottomSec.style.breakInside = 'avoid';
+    }
+
+    // Tighten the signature box / footer spacing for iterations (no totals block above them)
+    const approvalBox = document.querySelector('.approval-box');
+    const footerWrap = document.querySelector('.footer-wrapper');
+    if (type === 'iteration') {
+        if (approvalBox) approvalBox.style.marginTop = '30px';
+        if (footerWrap) footerWrap.style.marginTop = '25px';
+    } else {
+        if (approvalBox) approvalBox.style.marginTop = '60px';
+        if (footerWrap) footerWrap.style.marginTop = '50px';
     }
 
     if(type === 'iteration') {
