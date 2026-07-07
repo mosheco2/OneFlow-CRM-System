@@ -154,6 +154,17 @@
         .print-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 12px; }
         .print-table th { background: #f0f0f0; border: 1px solid #ccc; padding: 5px; font-weight: bold; }
         .print-table td { border: 1px solid #ccc; padding: 5px; }
+
+        /* Keep ALL document content inside the page bounds (tables, lists, pasted/rich-editor HTML) */
+        .preview-container { overflow-x: hidden; }
+        #previewPage { overflow-wrap: break-word; word-wrap: break-word; }
+        #previewPage table { width: 100% !important; max-width: 100% !important; table-layout: fixed; border-collapse: collapse; }
+        #previewPage td, #previewPage th { word-break: break-word; overflow-wrap: anywhere; }
+        #previewPage img, #previewPage svg { max-width: 100%; height: auto; }
+        #pIntroText, #pContentTables, #pClosingText, #pTerms { max-width: 100%; overflow-wrap: break-word; word-break: break-word; }
+        #pIntroText ul, #pIntroText ol, #pContentTables ul, #pContentTables ol,
+        #pClosingText ul, #pClosingText ol, #pTerms ul, #pTerms ol { padding-inline-start: 22px; margin-inline: 0; }
+
         @media print {
             .sidebar, .action-bar, #pdfActionButtons, .no-print { display: none !important; }
             .main-content { margin: 0; padding: 0; display: none; }
