@@ -1600,16 +1600,20 @@ window.generatePreview = function() {
              });
              contentHtml += `</tbody></table>`;
         } else {
-             const rawLines = freeText.split(/(?:\r\n|\r|\n)/g); 
+             const rawLines = freeText.split(/(?:\r\n|\r|\n)/g);
              contentHtml += `<ol style="line-height:1.6; padding-right:20px; margin-top:10px;">`;
+             let pendingBlank = 0; // כמה שורות ריקות הצטברו לפני הפריט הבא
              rawLines.forEach(line => {
+                 // שורה ריקה = רווח שהמשתמש הזין בכוונה — נשמור אותו כרווח אנכי
+                 if (!line.trim()) { pendingBlank++; return; }
                  let l = line.trim();
-                 if (!l) return;
                  if (l.startsWith('"') && l.endsWith('"')) {
                      l = l.substring(1, l.length - 1);
-                     l = l.replace(/""/g, '"'); 
+                     l = l.replace(/""/g, '"');
                  }
-                 contentHtml += `<li style="margin-bottom:8px; page-break-inside:avoid; white-space:pre-wrap; word-break:break-word;">${l}</li>`;
+                 const extraTop = pendingBlank > 0 ? (pendingBlank * 14) : 0;
+                 contentHtml += `<li style="margin-bottom:8px; margin-top:${extraTop}px; page-break-inside:avoid; white-space:pre-wrap; word-break:break-word;">${l}</li>`;
+                 pendingBlank = 0;
              });
              contentHtml += `</ol>`;
         }
