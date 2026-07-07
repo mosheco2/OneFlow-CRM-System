@@ -968,11 +968,23 @@ window.viewQuoteAsPDF = function(transId) {
         document.getElementById('inputPasteQuote').value = quoteItems.map(i => i.name).join('\n');
         parseQuotePaste();
     } else if (dType === 'iteration') {
-        // New format: object with full text + meta. Legacy: array of line-items.
+        // New format: object with full state. Legacy: array of line-items.
         if (parsedItems && parsedItems.__iter) {
             document.getElementById('inputPasteIter').value = parsedItems.text || "";
-            if (document.getElementById('inputReleaseDate')) document.getElementById('inputReleaseDate').value = parsedItems.releaseDate || "";
-            if (document.getElementById('inputIterNum')) document.getElementById('inputIterNum').value = parsedItems.iterNum || "";
+            const setIf = (id, val) => { const el = document.getElementById(id); if (el && val != null && val !== "") el.value = val; };
+            setIf('inputReleaseDate', parsedItems.releaseDate);
+            setIf('inputIterNum', parsedItems.iterNum);
+            setIf('inputDate', parsedItems.date);
+            setIf('inputValidUntil', parsedItems.validUntil);
+            // Table-mode checkbox (created by updateFormView above)
+            const cb = document.getElementById('cbTableMode');
+            if (cb) cb.checked = !!parsedItems.tableMode;
+            // Restore the template snapshot (intro / terms / closing) as it was saved
+            if (parsedItems.tpl) {
+                tplSetValue('tplIntro', parsedItems.tpl.intro || "");
+                tplSetValue('tplTerms', parsedItems.tpl.terms || "");
+                tplSetValue('tplClosing', parsedItems.tpl.closing || "");
+            }
         } else {
             const arr = Array.isArray(parsedItems) ? parsedItems : [];
             document.getElementById('inputPasteIter').value = arr.map(i => i.name).join('\n');
@@ -1620,7 +1632,8 @@ window.generatePreview = function() {
     }
     
     setText('pDocNum', document.getElementById('inputDocNum').value);
-    setText('pDate', new Date().toLocaleDateString('he-IL'));
+    const docDateVal = getValue('inputDate');
+    setText('pDate', docDateVal ? new Date(docDateVal).toLocaleDateString('he-IL') : new Date().toLocaleDateString('he-IL'));
     
     const type = document.getElementById('docType').value;
     if(type === 'hours_quote') parseQuotePaste();
@@ -1839,14 +1852,19 @@ window.saveDealFromGenerator = async function() {
         let desc = `#${docNum} - ${typeName} - ${clientName}`;
         if(type === 'iteration') desc += ` (מס' ${iterNum})`;
 
-        // For iterations, persist the full free-text content (+ meta) so it can be edited later
+        // For iterations, persist ALL entered fields (+ template snapshot) for later editing
         let itemsJson;
         if (type === 'iteration') {
+            const cbTable = document.getElementById('cbTableMode');
             itemsJson = JSON.stringify({
                 __iter: true,
                 text: getValue('inputPasteIter') || "",
                 releaseDate: getValue('inputReleaseDate') || "",
-                iterNum: iterNum
+                iterNum: iterNum,
+                date: getValue('inputDate') || "",
+                validUntil: getValue('inputValidUntil') || "",
+                tableMode: !!(cbTable && cbTable.checked),
+                tpl: getActiveTemplate('iteration') // snapshot of intro/terms/closing as shown
             });
         } else {
             itemsJson = JSON.stringify(quoteItems);
