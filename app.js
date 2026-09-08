@@ -187,13 +187,16 @@ function getActiveTemplate(type) {
 }
 
 // --- Paste sanitizer for the rich-text editors -------------------------------
-// Word / Google-Docs clipboards carry a wall of inline styling: Docs wraps the
-// whole selection in <b style="font-weight:normal"> and stamps dir="ltr" on
-// every paragraph, Word adds font-weight spans on everything. Pasted raw, that
-// turns the entire block bold and flips it to LTR, so Hebrew punctuation lands
-// on the wrong side. We rebuild the pasted markup and keep only real semantics
-// (headings, bold, italic, underline, lists, links, tables); direction is then
-// inherited from the RTL editor because no dir/align/style attribute survives.
+// Clipboards arrive in three flavours and every one of them mangles Hebrew:
+//  * Google Docs wraps the selection in <b style="font-weight:normal"> and
+//    stamps dir="ltr" on every paragraph -> everything bold, everything LTR.
+//  * Word attaches font-weight spans to every run and a wall of Mso markup.
+//  * PDF viewers (Gmail / Drive preview) hand over flat text with no structure
+//    at all: bullets are lost and brackets come back mirrored, ")כך(".
+// So we rebuild the pasted content instead of trusting it: keep only real
+// semantics (headings, bold, italic, underline, lists, links, tables), rebuild
+// the structure from the plain text when the markup carries none, and let the
+// direction be inherited from the RTL editor - no dir/align/style survives.
 const RTE_TAG_MAP = {
     P: 'p', DIV: 'p', SECTION: 'p', ARTICLE: 'p', BR: 'br',
     UL: 'ul', OL: 'ol', LI: 'li',
@@ -208,6 +211,32 @@ const RTE_DROP_TAGS = {
     OBJECT: 1, IFRAME: 1, INPUT: 1, BUTTON: 1, SELECT: 1, TEXTAREA: 1, SVG: 1,
     'O:P': 1, XML: 1, COLGROUP: 1, COL: 1, HR: 1
 };
+const RTE_INLINE_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, SPAN: 1, FONT: 1, A: 1, SUB: 1, SUP: 1, BDI: 1, BDO: 1 };
+const RTE_BULLET_RE = /^[\u2022\u00b7\u25e6\u25cb\u25aa\u25a0\u2023\u2219\u2043\u00ba*\u2013\u2014-]\s+/;
+
+function rteEscape(t) {
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// PDF extraction hands Hebrew punctuation back in VISUAL order, so a line
+// arrives with its brackets already mirrored - ")באחריות הלקוח(" instead of
+// "(באחריות הלקוח)" - and the RTL editor mirrors them a second time. When a
+// closing bracket shows up before its opening twin, flip that pair back.
+function rteFixMirrored(text) {
+    let out = String(text);
+    [[')', '('], [']', '['], ['}', '{']].forEach(function(pair) {
+        const close = pair[0], open = pair[1];
+        const ci = out.indexOf(close), oi = out.indexOf(open);
+        if (ci > -1 && oi > -1 && ci < oi) {
+            out = out.replace(/[()\[\]{}]/g, function(ch) {
+                if (ch === close) return open;
+                if (ch === open) return close;
+                return ch;
+            });
+        }
+    });
+    return out;
+}
 
 function rteStyleWeight(el) {
     const w = String((el.style && el.style.fontWeight) || '').toLowerCase().trim();
@@ -271,7 +300,7 @@ function rteWrapInline(frag, bold, italic, underline) {
 }
 function rteCleanNode(node) {
     if (node.nodeType === 3) {                       // text - Word pastes NBSPs everywhere
-        return document.createTextNode(node.nodeValue.replace(/\u00a0/g, ' '));
+        return document.createTextNode(rteFixMirrored(node.nodeValue.replace(/\u00a0/g, ' ')));
     }
     if (node.nodeType !== 1) return null;             // comments and friends
 
@@ -318,6 +347,60 @@ function rteCleanNode(node) {
     el.appendChild(mapped === 'h4' ? kids : rteWrapInline(kids, bold, italic, underline));
     return el;
 }
+
+// --- Structure heuristics, for sources that carry no usable formatting -------
+// A short label line ("לוחות זמנים:", "1. תהליך ההקמה") is a heading; a line
+// that opens with a short "lead-in:" keeps that lead-in bold, exactly like the
+// documents these texts are copied from.
+function rteIsHeadingText(t) {
+    const s = String(t).trim();
+    if (!s || s.length > 70) return false;
+    if (/[.!?]$/.test(s)) return false;                     // a full sentence, not a title
+    return /:$/.test(s) || /^\d+(\.\d+)*[.)]\s*\S/.test(s);
+}
+function rteInlineHtml(line) {
+    const m = String(line).match(/^([^:]{2,40}[^\s:\d]):\s+(\S[\s\S]*)$/);
+    if (m) return '<strong>' + rteEscape(m[1]) + ':</strong> ' + rteEscape(m[2]);
+    return rteEscape(line);
+}
+// Applied only when the clipboard gave us nothing to go on (plain text, or
+// markup that marked every single word bold).
+function rteApplyStructureHeuristics(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('p'), function(p) {
+        if (p.children.length > 0) return;                  // keeps links / partial bolding
+        const t = (p.textContent || '').trim();
+        if (!t) return;
+        if (rteIsHeadingText(t)) {
+            const h = document.createElement('h4');
+            h.textContent = t;
+            p.parentNode.replaceChild(h, p);
+        } else {
+            const html = rteInlineHtml(t);
+            if (html !== rteEscape(t)) p.innerHTML = html;
+        }
+    });
+}
+// True when (almost) the entire selection came in bold - a clipboard artifact,
+// never an intent. The bold is dropped so the headings can stand out again.
+function rteStripUniformBold(root) {
+    const total = (root.textContent || '').replace(/\s+/g, '').length;
+    if (total < 120) return false;
+    let bold = 0;
+    const strongs = root.querySelectorAll('strong');
+    Array.prototype.forEach.call(strongs, function(n) {
+        if (n.parentElement && n.parentElement.closest('strong')) return;   // don't count twice
+        bold += (n.textContent || '').replace(/\s+/g, '').length;
+    });
+    if (bold / total < 0.85) return false;
+    Array.prototype.forEach.call(strongs, function(n) {
+        if (!n.parentNode) return;
+        const f = document.createDocumentFragment();
+        while (n.firstChild) f.appendChild(n.firstChild);
+        n.parentNode.replaceChild(f, n);
+    });
+    return true;
+}
+
 function rteSanitizeHtml(html) {
     const src = document.createElement('div');
     src.innerHTML = String(html || '')
@@ -330,13 +413,101 @@ function rteSanitizeHtml(html) {
     });
     const out = document.createElement('div');
     out.appendChild(frag);
+    if (rteStripUniformBold(out)) rteApplyStructureHeuristics(out);
     return out.innerHTML;
 }
+
+// Rebuilds a document out of flat text: bullet lines become real lists, label
+// lines become headings, everything else a paragraph with its lead-in bolded.
 function rteTextToHtml(text) {
-    const esc = String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return esc.split(/\r\n|\r|\n/).map(function(line) {
-        return line.trim() === '' ? '<p><br></p>' : '<p>' + line + '</p>';
-    }).join('');
+    const lines = String(text || '').replace(/\u00a0/g, ' ').split(/\r\n|\r|\n/);
+    let html = '', inList = false;
+    const closeList = function() { if (inList) { html += '</ul>'; inList = false; } };
+    lines.forEach(function(raw) {
+        const line = rteFixMirrored(raw.trim());
+        if (!line) { closeList(); return; }                 // blank line = block break
+        if (RTE_BULLET_RE.test(line)) {
+            if (!inList) { html += '<ul>'; inList = true; }
+            html += '<li>' + rteInlineHtml(line.replace(RTE_BULLET_RE, '')) + '</li>';
+            return;
+        }
+        closeList();
+        if (rteIsHeadingText(line)) html += '<h4>' + rteEscape(line) + '</h4>';
+        else html += '<p>' + rteInlineHtml(line) + '</p>';
+    });
+    closeList();
+    return html;
+}
+
+// Some sources (PDF viewers above all) offer an HTML flavour that carries no
+// structure, or less text than the plain one - the plain text then wins,
+// because from it we can rebuild the headings and the bullets.
+function rteNeedsPlainFallback(cleanHtml, text) {
+    if (!text || !text.trim()) return false;
+    const probe = document.createElement('div');
+    probe.innerHTML = cleanHtml;
+    const htmlLen = (probe.textContent || '').replace(/\s+/g, '').length;
+    const textLen = String(text).replace(/\s+/g, '').length;
+    if (htmlLen < textLen * 0.6) return true;
+    const lines = String(text).split(/\r\n|\r|\n/).filter(function(l) { return l.trim(); }).length;
+    return lines > 1 && !probe.querySelector('p, h4, li, br, table');
+}
+
+// Splitting a text node leaves empty halves behind - they would show up as
+// blank paragraphs, so only the halves that still hold something are kept.
+function rteHoldsSomething(node) {
+    return Array.prototype.some.call(node.childNodes, function(ch) {
+        return ch.nodeType === 1 || (ch.nodeValue && ch.nodeValue.trim() !== '');
+    });
+}
+// Lifts a node out of the inline formatting (and paragraph) it sits in,
+// splitting those elements, so inserted blocks land as siblings.
+function rteSplitOut(root, node) {
+    const SPLIT = Object.assign({ P: 1, H4: 1, BLOCKQUOTE: 1 }, RTE_INLINE_TAGS);
+    while (node.parentNode && node.parentNode !== root &&
+           SPLIT[node.parentNode.nodeName] && node.parentNode.parentNode) {
+        const parent = node.parentNode;
+        const after = parent.cloneNode(false);
+        let n = node.nextSibling;
+        while (n) { const nx = n.nextSibling; after.appendChild(n); n = nx; }
+        parent.parentNode.insertBefore(node, parent.nextSibling);
+        if (rteHoldsSomething(after)) parent.parentNode.insertBefore(after, node.nextSibling);
+        if (!rteHoldsSomething(parent)) parent.parentNode.removeChild(parent);
+    }
+}
+
+// Inserts the sanitized HTML at the caret WITHOUT inheriting the formatting
+// around it: execCommand('insertHTML') drops the content inside whatever
+// <strong>/<h4> the caret happens to sit in - which is exactly what turned a
+// whole pasted document bold.
+function rteInsertHtml(el, html) {
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    const frag = document.createDocumentFragment();
+    while (holder.firstChild) frag.appendChild(holder.firstChild);
+    const last = frag.lastChild;
+    if (!last) return;
+
+    const sel = window.getSelection();
+    const range = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0) : null;
+    if (!range || !el.contains(range.commonAncestorContainer)) {
+        el.appendChild(frag);
+    } else {
+        range.deleteContents();
+        const marker = document.createElement('span');
+        range.insertNode(marker);
+        rteSplitOut(el, marker);
+        marker.parentNode.insertBefore(frag, marker);
+        marker.parentNode.removeChild(marker);
+    }
+    if (sel) {
+        const r = document.createRange();
+        r.setStartAfter(last);
+        r.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(r);
+    }
+    el.normalize();
 }
 
 // --- Lightweight WYSIWYG editor toolbar (no external libs) ---
@@ -360,8 +531,9 @@ function initRichEditor(id) {
         if (!html && !text) return;
         e.preventDefault();
         let clean = html ? rteSanitizeHtml(html) : '';
-        if (!clean || !clean.trim()) clean = rteTextToHtml(text);
-        document.execCommand('insertHTML', false, clean);
+        if (!clean.trim() || rteNeedsPlainFallback(clean, text)) clean = rteTextToHtml(text);
+        if (!clean.trim()) return;
+        rteInsertHtml(el, clean);
         saveSel();
     });
 
