@@ -212,7 +212,13 @@ const RTE_DROP_TAGS = {
     'O:P': 1, XML: 1, COLGROUP: 1, COL: 1, HR: 1
 };
 const RTE_INLINE_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, SPAN: 1, FONT: 1, A: 1, SUB: 1, SUP: 1, BDI: 1, BDO: 1 };
-const RTE_BULLET_RE = /^[\u2022\u00b7\u25e6\u25cb\u25aa\u25a0\u2023\u2219\u2043\u00ba*\u2013\u2014-]\s+/;
+// Bullet glyphs as they arrive from PDFs and Word: real bullets, the private
+// use area codes Symbol/Wingdings map them to, and Word's "o" sub-bullet.
+const RTE_BULLET_RE = /^(?:[\u2022\u00b7\u25e6\u25cb\u25aa\u25a0\u2023\u2219\u2043\u00ba\u00a7\uf000-\uf0ff*\u2013\u2014-]|o(?=\t| {2}))\s+/;
+// A numbered section title. PDF extraction moves the dot to the other side of
+// the number (the same reason brackets arrive mirrored), so ".7 תנאי תשלום"
+// has to be recognised just like "7. תנאי תשלום".
+const RTE_NUM_HEAD_RE = /^(?:[.)]\s*\d+(?:\.\d+)*|\d+(?:\.\d+)*\s*[.)]|\d+(?:\.\d+)+)\s+\S/;
 
 function rteEscape(t) {
     return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -356,7 +362,7 @@ function rteIsHeadingText(t) {
     const s = String(t).trim();
     if (!s || s.length > 70) return false;
     if (/[.!?]$/.test(s)) return false;                     // a full sentence, not a title
-    return /:$/.test(s) || /^\d+(\.\d+)*[.)]\s*\S/.test(s);
+    return /:$/.test(s) || RTE_NUM_HEAD_RE.test(s);
 }
 function rteInlineHtml(line) {
     const m = String(line).match(/^([^:]{2,40}[^\s:\d]):\s+(\S[\s\S]*)$/);
@@ -426,7 +432,10 @@ function rteTextToHtml(text) {
     lines.forEach(function(raw) {
         const line = rteFixMirrored(raw.trim());
         if (!line) { closeList(); return; }                 // blank line = block break
-        if (RTE_BULLET_RE.test(line)) {
+        // Selecting a list in a PDF viewer copies the text but leaves the
+        // bullet glyph behind - the indent it left is the only marker we get.
+        const indented = /^(?:\t| {2,})/.test(raw) && !rteIsHeadingText(line);
+        if (RTE_BULLET_RE.test(line) || indented) {
             if (!inList) { html += '<ul>'; inList = true; }
             html += '<li>' + rteInlineHtml(line.replace(RTE_BULLET_RE, '')) + '</li>';
             return;
