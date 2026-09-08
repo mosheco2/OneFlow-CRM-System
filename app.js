@@ -16,6 +16,7 @@ let hoursScopeLines = [];
 let currentDashFilter = '';
 let currentLogoDataUrl = '';
 let dupSourceTransId = null;
+let currentEditTransId = null;  // מסמך קיים שנטען לעריכה (שמירה תעדכן אותו)
 let autoSyncInterval = null;
 let isAutoSyncRunning = false; 
 
@@ -185,6 +186,159 @@ function getActiveTemplate(type) {
     return tpl;
 }
 
+// --- Paste sanitizer for the rich-text editors -------------------------------
+// Word / Google-Docs clipboards carry a wall of inline styling: Docs wraps the
+// whole selection in <b style="font-weight:normal"> and stamps dir="ltr" on
+// every paragraph, Word adds font-weight spans on everything. Pasted raw, that
+// turns the entire block bold and flips it to LTR, so Hebrew punctuation lands
+// on the wrong side. We rebuild the pasted markup and keep only real semantics
+// (headings, bold, italic, underline, lists, links, tables); direction is then
+// inherited from the RTL editor because no dir/align/style attribute survives.
+const RTE_TAG_MAP = {
+    P: 'p', DIV: 'p', SECTION: 'p', ARTICLE: 'p', BR: 'br',
+    UL: 'ul', OL: 'ol', LI: 'li',
+    H1: 'h4', H2: 'h4', H3: 'h4', H4: 'h4', H5: 'h4', H6: 'h4',
+    STRONG: 'strong', B: 'strong', EM: 'em', I: 'em', U: 'u',
+    A: 'a', SPAN: 'span', FONT: 'span',
+    TABLE: 'table', THEAD: 'tbody', TBODY: 'tbody', TFOOT: 'tbody', TR: 'tr', TD: 'td', TH: 'td',
+    BLOCKQUOTE: 'blockquote'
+};
+const RTE_DROP_TAGS = {
+    SCRIPT: 1, STYLE: 1, META: 1, LINK: 1, TITLE: 1, HEAD: 1, IMG: 1, PICTURE: 1,
+    OBJECT: 1, IFRAME: 1, INPUT: 1, BUTTON: 1, SELECT: 1, TEXTAREA: 1, SVG: 1,
+    'O:P': 1, XML: 1, COLGROUP: 1, COL: 1, HR: 1
+};
+
+function rteStyleWeight(el) {
+    const w = String((el.style && el.style.fontWeight) || '').toLowerCase().trim();
+    if (!w) return null;
+    if (w === 'bold' || w === 'bolder') return 700;
+    if (w === 'normal' || w === 'lighter') return 400;
+    const n = parseInt(w, 10);
+    return isNaN(n) ? null : n;
+}
+// An explicit weight always wins over the tag - that is what neutralizes the
+// <b style="font-weight:normal"> wrapper Google Docs puts around everything.
+function rteIsBold(el, tag) {
+    const w = rteStyleWeight(el);
+    if (w !== null) return w >= 600;
+    return tag === 'B' || tag === 'STRONG';
+}
+function rteIsItalic(el, tag) {
+    const st = String((el.style && el.style.fontStyle) || '').toLowerCase().trim();
+    if (st) return st === 'italic' || st === 'oblique';
+    return tag === 'I' || tag === 'EM';
+}
+function rteIsUnderline(el, tag) {
+    const d = String((el.style && (el.style.textDecorationLine || el.style.textDecoration)) || '').toLowerCase();
+    if (d) return d.indexOf('underline') > -1;
+    return tag === 'U';
+}
+function rteSafeHref(href) {
+    const h = String(href || '').trim();
+    return /^(https?:|mailto:|tel:)/i.test(h) ? h : '';
+}
+function rteHasContent(frag) {
+    if (frag.textContent && frag.textContent.trim() !== '') return true;
+    return !!(frag.querySelector && frag.querySelector('br, td, li'));
+}
+// The single element a node holds, or null when it holds text / several nodes
+function rteSoleElement(node) {
+    let found = null;
+    for (let i = 0; i < node.childNodes.length; i++) {
+        const k = node.childNodes[i];
+        if (k.nodeType === 3) { if (k.nodeValue.trim() !== '') return null; continue; }
+        if (k.nodeType !== 1) continue;
+        if (found) return null;
+        found = k;
+    }
+    return found;
+}
+function rteWrapInline(frag, bold, italic, underline) {
+    if (!(bold || italic || underline) || !rteHasContent(frag)) return frag;
+    // Word nests <b><span style="font-weight:bold"> - don't stack the wrappers
+    const sole = rteSoleElement(frag);
+    const soleTag = sole ? sole.nodeName.toUpperCase() : '';
+    if (soleTag === 'STRONG') bold = false;
+    if (soleTag === 'EM') italic = false;
+    if (soleTag === 'U') underline = false;
+    if (!(bold || italic || underline)) return frag;
+    let node = frag;
+    if (underline) { const u = document.createElement('u'); u.appendChild(node); node = u; }
+    if (italic)    { const em = document.createElement('em'); em.appendChild(node); node = em; }
+    if (bold)      { const b = document.createElement('strong'); b.appendChild(node); node = b; }
+    return node;
+}
+function rteCleanNode(node) {
+    if (node.nodeType === 3) {                       // text - Word pastes NBSPs everywhere
+        return document.createTextNode(node.nodeValue.replace(/\u00a0/g, ' '));
+    }
+    if (node.nodeType !== 1) return null;             // comments and friends
+
+    const tag = node.nodeName.toUpperCase();
+    if (RTE_DROP_TAGS[tag]) return null;
+
+    const kids = document.createDocumentFragment();
+    Array.prototype.forEach.call(node.childNodes, function(ch) {
+        const c = rteCleanNode(ch);
+        if (c) kids.appendChild(c);
+    });
+
+    const mapped = RTE_TAG_MAP[tag];
+    if (!mapped) return kids;                         // unknown wrapper -> keep its content only
+    if (mapped === 'br') return document.createElement('br');
+
+    const bold = rteIsBold(node, tag);
+    const italic = rteIsItalic(node, tag);
+    const underline = rteIsUnderline(node, tag);
+
+    // Inline carriers exist only to hold formatting
+    if (mapped === 'span' || mapped === 'strong' || mapped === 'em' || mapped === 'u') {
+        return rteWrapInline(kids, bold, italic, underline);
+    }
+    if (mapped === 'a') {
+        const href = rteSafeHref(node.getAttribute('href'));
+        if (!href) return rteWrapInline(kids, bold, italic, underline);
+        const a = document.createElement('a');
+        a.setAttribute('href', href);
+        a.appendChild(rteWrapInline(kids, bold, italic, underline));
+        return a;
+    }
+
+    // A wrapper <div> holding whole blocks must not become a <p> (invalid markup)
+    if (mapped === 'p' && kids.querySelector && kids.querySelector('p, h4, ul, ol, table, blockquote')) {
+        return kids;
+    }
+
+    // Block level: drop the empties Word emits by the dozen (keep table cells)
+    if (!rteHasContent(kids)) return (mapped === 'td') ? document.createElement('td') : null;
+
+    const el = document.createElement(mapped);
+    // A heading is bold by definition - no need to re-wrap its text in <strong>
+    el.appendChild(mapped === 'h4' ? kids : rteWrapInline(kids, bold, italic, underline));
+    return el;
+}
+function rteSanitizeHtml(html) {
+    const src = document.createElement('div');
+    src.innerHTML = String(html || '')
+        .replace(/<!--[\s\S]*?-->/g, '')                     // Word conditional comments / fragment markers
+        .replace(/<\/?(?:o:p|w:[a-z]+|xml)[^>]*>/gi, '');
+    const frag = document.createDocumentFragment();
+    Array.prototype.forEach.call(src.childNodes, function(ch) {
+        const c = rteCleanNode(ch);
+        if (c) frag.appendChild(c);
+    });
+    const out = document.createElement('div');
+    out.appendChild(frag);
+    return out.innerHTML;
+}
+function rteTextToHtml(text) {
+    const esc = String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return esc.split(/\r\n|\r|\n/).map(function(line) {
+        return line.trim() === '' ? '<p><br></p>' : '<p>' + line + '</p>';
+    }).join('');
+}
+
 // --- Lightweight WYSIWYG editor toolbar (no external libs) ---
 function initRichEditor(id) {
     const el = document.getElementById(id);
@@ -195,6 +349,22 @@ function initRichEditor(id) {
     el.addEventListener('keyup', saveSel);
     el.addEventListener('mouseup', saveSel);
     el.addEventListener('blur', saveSel);
+
+    // Paste through the sanitizer so copied text keeps its real formatting
+    // (headings bold, body regular) and stays right-to-left.
+    el.addEventListener('paste', function(e) {
+        const cd = e.clipboardData || window.clipboardData;
+        if (!cd) return;
+        const html = cd.getData('text/html');
+        const text = cd.getData('text/plain');
+        if (!html && !text) return;
+        e.preventDefault();
+        let clean = html ? rteSanitizeHtml(html) : '';
+        if (!clean || !clean.trim()) clean = rteTextToHtml(text);
+        document.execCommand('insertHTML', false, clean);
+        saveSel();
+    });
+
     function saveSel() {
         const sel = window.getSelection();
         if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) savedRange = sel.getRangeAt(0);
@@ -223,7 +393,8 @@ function initRichEditor(id) {
         '<button type="button" title="רשימת תבליטים" data-cmd="insertUnorderedList">• רשימה</button>' +
         '<button type="button" title="רשימה ממוספרת" data-cmd="insertOrderedList">1. רשימה</button>' +
         '<span class="rte-sep"></span>' +
-        '<button type="button" title="נקה עיצוב" data-cmd="removeFormat">נקה עיצוב</button>';
+        '<button type="button" title="נקה עיצוב" data-cmd="removeFormat">נקה עיצוב</button>' +
+        '<button type="button" title="מנקה שאריות עיצוב של Word/Docs ומחזיר את הטקסט לכיוון ימין-לשמאל" data-role="fixpaste">🧹 תקן טקסט מודבק</button>';
 
     // Prevent toolbar clicks from stealing the editor selection
     tb.addEventListener('mousedown', function(e) { e.preventDefault(); });
@@ -241,6 +412,17 @@ function initRichEditor(id) {
     });
     const colorInp = tb.querySelector('input[data-role="color"]');
     colorInp.addEventListener('input', function() { run('foreColor', colorInp.value); });
+
+    // Repairs content that was pasted before this fix (or edited elsewhere):
+    // strips the imported styling/direction and keeps only real formatting.
+    const fixBtn = tb.querySelector('button[data-role="fixpaste"]');
+    fixBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        el.innerHTML = rteSanitizeHtml(el.innerHTML);
+        savedRange = null;
+        el.focus();
+        showToast("הטקסט נוקה ויושר לימין");
+    });
 
     el.parentNode.insertBefore(tb, el);
 }
@@ -338,6 +520,7 @@ window.switchView = function(viewId, btn) {
          
          if(viewId === 'crm') renderCRMTable(); 
          if(viewId === 'generator') {
+             clearEditingDoc();   // כניסה למחולל = מסמך חדש (טעינת מסמך קיים מסמנת אותו מיד אח"כ)
              updateFormView(); 
              populateGeneratorClients(); 
          }
@@ -401,7 +584,7 @@ window.openItemPopup = function(transId) {
     
     let html = "";
     try {
-        const items = JSON.parse(item.ItemsJSON || "[]");
+        const items = parseDocPayload(item.ItemsJSON).items;
         if(Array.isArray(items) && items.length > 0) {
             html += `<table style="width:100%; border-collapse: collapse;">
                         <tr style="background:#f0f0f0;"><th style="padding:8px; border:1px solid #ddd; text-align:right;">פריט</th><th style="padding:8px; border:1px solid #ddd;">כמות</th><th style="padding:8px; border:1px solid #ddd;">מחיר יח'</th><th style="padding:8px; border:1px solid #ddd;">סה"כ</th></tr>`;
@@ -927,6 +1110,76 @@ function renderClientNotes() {
 }
 
 // ==========================================
+// מצב מלא של המסמך (ItemsJSON) - שמירה, קריאה ועריכה
+// ==========================================
+
+// Normalizes a saved ItemsJSON payload into { items, state }.
+// Legacy documents stored a bare array of line-items (so every free-text box
+// fell back to the defaults when they were re-opened); documents saved from
+// here on store the full generator state, and the array lives in state.items.
+function parseDocPayload(json) {
+    let parsed = null;
+    try { parsed = JSON.parse(json || "[]"); } catch(e) { parsed = null; }
+
+    if (Array.isArray(parsed)) return { items: parsed, state: null };
+    if (parsed && typeof parsed === 'object') {
+        let items = Array.isArray(parsed.items) ? parsed.items : [];
+        // Legacy iteration records kept only the raw text
+        if (items.length === 0 && typeof parsed.text === 'string') {
+            items = parsed.text.split('\n').filter(l => l.trim())
+                        .map(line => ({ name: line.trim(), qty: 1, price: 0, isMonthly: false }));
+        }
+        return { items: items, state: parsed };
+    }
+    return { items: [], state: null };
+}
+
+// Snapshot of everything the user typed in the generator, so re-opening the
+// document restores it exactly instead of falling back to the default texts.
+function collectDocState(type) {
+    const cbTable = document.getElementById('cbTableMode');
+    const state = {
+        __doc: true,
+        type: type,
+        items: quoteItems,
+        hoursText: getValue('inputPasteQuote') || "",
+        generalNotes: getValue('inputGeneralNotes') || "",
+        validUntil: getValue('inputValidUntil') || "",
+        discountPercent: getValue('inputDiscountPercent') || "0",
+        date: getValue('inputDate') || "",
+        docNum: getValue('inputDocNum') || "",
+        tpl: getActiveTemplate(type)   // snapshot of intro / terms / closing as shown
+    };
+    if (type === 'iteration') {
+        state.__iter = true;           // legacy flag, still read by the quotes list & duplication
+        state.text = getValue('inputPasteIter') || "";
+        state.releaseDate = getValue('inputReleaseDate') || "";
+        state.iterNum = getValue('inputIterNum') || "";
+        state.tableMode = !!(cbTable && cbTable.checked);
+    }
+    return state;
+}
+
+// Banner telling the user that saving updates the loaded document in place
+function updateEditingBanner() {
+    const box = document.getElementById('editingDocBanner');
+    if (!box) return;
+    const rec = currentEditTransId
+        ? data.finance.find(f => cleanID(f.TransID) === cleanID(currentEditTransId))
+        : null;
+    if (!rec) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = 'block';
+    box.innerHTML = `✏️ עריכת מסמך קיים <strong>#${rec.DocNum || ''}</strong> — שמירה תעדכן את המסמך הזה ולא תיצור חדש.
+        <button type="button" class="btn btn-sm btn-secondary" style="margin-right:10px;" onclick="clearEditingDoc(true)">שמור כמסמך חדש</button>`;
+}
+
+window.clearEditingDoc = function(notify) {
+    currentEditTransId = null;
+    updateEditingBanner();
+    if (notify) showToast("השמירה הבאה תיצור מסמך חדש");
+};
+
+// ==========================================
 // פונקציה חדשה: טעינת הצעה קיימת למחולל והדפסה
 // ==========================================
 window.viewQuoteAsPDF = function(transId) {
@@ -954,50 +1207,47 @@ window.viewQuoteAsPDF = function(transId) {
     
     updateFormView();
 
-    // פיענוח הפריטים שנשמרו
-    let parsedItems;
-    try {
-        parsedItems = JSON.parse(q.ItemsJSON || "[]");
-    } catch(e) {
-        parsedItems = [];
-    }
+    // פיענוח הפריטים והמצב המלא שנשמרו עם המסמך
+    const saved = parseDocPayload(q.ItemsJSON);
+    const st = saved.state;
+    quoteItems = saved.items.slice();
 
-    // אם זה טקסט חופשי, עדכן את תיבת הטקסט
+    const setIf = (id, val) => { const el = document.getElementById(id); if (el && val != null && val !== "") el.value = val; };
+
+    // תיבות הטקסט החופשי לפי סוג המסמך
     if (dType === 'hours_quote') {
-        quoteItems = Array.isArray(parsedItems) ? parsedItems : [];
-        document.getElementById('inputPasteQuote').value = quoteItems.map(i => i.name).join('\n');
+        const hoursText = (st && st.hoursText) ? st.hoursText : quoteItems.map(i => i.name).join('\n');
+        document.getElementById('inputPasteQuote').value = hoursText;
         parseQuotePaste();
     } else if (dType === 'iteration') {
-        // New format: object with full state. Legacy: array of line-items.
-        if (parsedItems && parsedItems.__iter) {
-            document.getElementById('inputPasteIter').value = parsedItems.text || "";
-            const setIf = (id, val) => { const el = document.getElementById(id); if (el && val != null && val !== "") el.value = val; };
-            setIf('inputReleaseDate', parsedItems.releaseDate);
-            setIf('inputIterNum', parsedItems.iterNum);
-            setIf('inputDate', parsedItems.date);
-            setIf('inputValidUntil', parsedItems.validUntil);
-            // Table-mode checkbox (created by updateFormView above)
-            const cb = document.getElementById('cbTableMode');
-            if (cb) cb.checked = !!parsedItems.tableMode;
-            // Restore the template snapshot (intro / terms / closing) as it was saved
-            if (parsedItems.tpl) {
-                tplSetValue('tplIntro', parsedItems.tpl.intro || "");
-                tplSetValue('tplTerms', parsedItems.tpl.terms || "");
-                tplSetValue('tplClosing', parsedItems.tpl.closing || "");
-            }
-        } else {
-            const arr = Array.isArray(parsedItems) ? parsedItems : [];
-            document.getElementById('inputPasteIter').value = arr.map(i => i.name).join('\n');
-        }
+        const iterText = (st && st.text != null) ? st.text : quoteItems.map(i => i.name).join('\n');
+        document.getElementById('inputPasteIter').value = iterText;
+        setIf('inputReleaseDate', st && st.releaseDate);
+        setIf('inputIterNum', st && st.iterNum);
+        // Table-mode checkbox (created by updateFormView above)
+        const cb = document.getElementById('cbTableMode');
+        if (cb) cb.checked = !!(st && st.tableMode);
         parseIterationText();
-    } else {
-        quoteItems = Array.isArray(parsedItems) ? parsedItems : [];
     }
 
-    // איפוס הנחה ל-0 כברירת מחדל (ניתן לעדכון ידני אח"כ)
-    if(document.getElementById('inputDiscountPercent')) {
-        document.getElementById('inputDiscountPercent').value = 0;
+    // שדות ותיבות טקסט המשותפים לכל סוגי המסמכים
+    const notesEl = document.getElementById('inputGeneralNotes');
+    const discEl = document.getElementById('inputDiscountPercent');
+    if (notesEl) notesEl.value = (st && st.generalNotes) || "";
+    if (discEl)  discEl.value  = (st && st.discountPercent != null && st.discountPercent !== "") ? st.discountPercent : 0;
+    setIf('inputDate', st && st.date);
+    setIf('inputValidUntil', st && st.validUntil);
+
+    // שחזור התבנית (פתיח / תנאים / טקסט סוגר) בדיוק כפי שנשמרה במסמך
+    if (st && st.tpl) {
+        tplSetValue('tplIntro', st.tpl.intro || "");
+        tplSetValue('tplTerms', st.tpl.terms || "");
+        tplSetValue('tplClosing', st.tpl.closing || "");
     }
+
+    // מכאן ואילך שמירה תעדכן את המסמך הזה במקום ליצור עותק חדש
+    currentEditTransId = q.TransID;
+    updateEditingBanner();
 
     renderBuilderTable();
 
@@ -1029,11 +1279,11 @@ function renderClientQuotes() {
         const isIter = isIterationDoc(q);
         let contentSummary = "פירוט...";
         try {
-            const parsed = JSON.parse(q.ItemsJSON || "[]");
-            if (parsed && parsed.__iter) {
-                contentSummary = (parsed.text || "").replace(/\n+/g, ' · ');
-            } else if (Array.isArray(parsed)) {
-                contentSummary = parsed.map(i => i.name).join(", ");
+            const parsed = parseDocPayload(q.ItemsJSON);
+            if (parsed.state && parsed.state.__iter) {
+                contentSummary = (parsed.state.text || "").replace(/\n+/g, ' · ');
+            } else if (parsed.items.length > 0) {
+                contentSummary = parsed.items.map(i => i.name).join(", ");
             }
             if(contentSummary.length > 50) contentSummary = contentSummary.substring(0,50) + "...";
         } catch(e) {}
@@ -1131,7 +1381,7 @@ window.renderQuoteItemsSelection = function() {
     const quote = data.finance.find(f => f.TransID === quoteId);
     if(quote && quote.ItemsJSON) {
         try {
-            const items = JSON.parse(quote.ItemsJSON);
+            const items = parseDocPayload(quote.ItemsJSON).items;
             if(Array.isArray(items) && items.length > 0) {
                  let html = `<div style="padding:5px; background:#fff; border:1px solid #ddd; max-height:100px; overflow-y:auto;">`;
                  items.forEach((item, idx) => {
@@ -1291,7 +1541,7 @@ window.updateInlineContentList = function(stepId) {
     const doc = data.finance.find(f => cleanID(f.TransID) === transId);
     if (doc && doc.ItemsJSON) {
         try {
-            const items = JSON.parse(doc.ItemsJSON);
+            const items = parseDocPayload(doc.ItemsJSON).items;
             if (Array.isArray(items) && items.length > 0) {
                 let html = "<strong>תכולת מסמך:</strong><ul style='margin:0; padding-right:20px;'>";
                 items.forEach(it => html += `<li>${it.name || "פריט ללא שם"}</li>`);
@@ -1521,6 +1771,15 @@ window.updateFormView = function() {
 
     // Load the editable template (intro / terms / closing) for the selected doc type
     loadTemplateEditor(type);
+
+    // Start from a clean sheet: no leftovers from the previously edited document
+    // (viewQuoteAsPDF re-fills these right after, from the saved document state)
+    const clear = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    clear('inputPasteIter', '');
+    clear('inputPasteQuote', '');
+    clear('inputGeneralNotes', '');
+    clear('inputDiscountPercent', 0);
+    hoursScopeLines = [];
 
     quoteItems = []; renderBuilderTable();
 }
@@ -1852,40 +2111,44 @@ window.saveDealFromGenerator = async function() {
         let desc = `#${docNum} - ${typeName} - ${clientName}`;
         if(type === 'iteration') desc += ` (מס' ${iterNum})`;
 
-        // For iterations, persist ALL entered fields (+ template snapshot) for later editing
-        let itemsJson;
-        if (type === 'iteration') {
-            const cbTable = document.getElementById('cbTableMode');
-            itemsJson = JSON.stringify({
-                __iter: true,
-                text: getValue('inputPasteIter') || "",
-                releaseDate: getValue('inputReleaseDate') || "",
-                iterNum: iterNum,
-                date: getValue('inputDate') || "",
-                validUntil: getValue('inputValidUntil') || "",
-                tableMode: !!(cbTable && cbTable.checked),
-                tpl: getActiveTemplate('iteration') // snapshot of intro/terms/closing as shown
-            });
-        } else {
-            itemsJson = JSON.stringify(quoteItems);
-        }
+        // Persist ALL entered fields (free-text boxes + template snapshot) for
+        // every document type, so re-opening it restores exactly what was sent
+        // to the client instead of the default template texts.
+        const itemsJson = JSON.stringify(collectDocState(type));
 
-        const payload = {
-            TransID: 'T' + Date.now(),
+        // מסמך שנטען לעריכה מתעדכן במקומו; אחרת נוצר מסמך חדש
+        const editing = currentEditTransId
+            ? data.finance.find(f => cleanID(f.TransID) === cleanID(currentEditTransId))
+            : null;
+
+        const payload = Object.assign({}, editing || {}, {
+            TransID: editing ? editing.TransID : 'T' + Date.now(),
             ClientID: cleanID(clientObj.ClientID),
             ClientName: clientName,
             DocType: type,
             DocNum: docNum,
             Amount: (type === 'iteration') ? 0 : t.setupAfterDisc,
-            PaymentDate: new Date().toISOString(),
-            Status: (type === 'iteration') ? 'תיעוד בלבד' : 'הצעת מחיר',
+            PaymentDate: editing ? (editing.PaymentDate || new Date().toISOString()) : new Date().toISOString(),
+            Status: editing ? (editing.Status || ((type === 'iteration') ? 'תיעוד בלבד' : 'הצעת מחיר'))
+                            : ((type === 'iteration') ? 'תיעוד בלבד' : 'הצעת מחיר'),
             Description: desc,
             ItemsJSON: itemsJson
-        };
-        await sendToGAS('addFinance', payload);
-        await refreshData(true); 
-        showToast("נשמר ביומן!"); 
-    } catch(e) { console.error(e); } finally { hideLoader(); }
+        });
+        delete payload._isoDate; // שדה עזר מקומי בלבד
+
+        if (editing) {
+            // הבקנד תומך רק בהוספה - מוחקים ומוסיפים מחדש עם אותו TransID
+            await sendToGAS('deleteItem', { sheet: 'Finance_Log', idVal: editing.TransID, idCol: 'TransID' });
+        }
+        const res = await sendToGAS('addFinance', payload);
+        if (res && res.status === 'error') throw new Error(res.message);
+        await refreshData(true);
+        updateEditingBanner();
+        showToast(editing ? "המסמך עודכן ✓" : "נשמר ביומן!"); 
+    } catch(e) {
+        console.error(e);
+        alert("שגיאה בשמירת המסמך: " + e.message);
+    } finally { hideLoader(); }
 };
 
 window.createNewQuoteFromClient = function() {
@@ -1972,7 +2235,8 @@ window.confirmDuplicateDocument = async function() {
 
     let desc = `#${newDocNum} - ${typeName} - ${target['Company Name']}`;
     if (isIter) {
-        try { const p = JSON.parse(src.ItemsJSON || '{}'); if (p && p.__iter && p.iterNum) desc += ` (מס' ${p.iterNum})`; } catch(e) {}
+        const srcState = parseDocPayload(src.ItemsJSON).state;
+        if (srcState && srcState.iterNum) desc += ` (מס' ${srcState.iterNum})`;
     }
 
     const payload = {

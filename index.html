@@ -164,6 +164,7 @@
         #pIntroText, #pContentTables, #pClosingText, #pTerms { max-width: 100%; overflow-wrap: break-word; word-break: break-word; }
         #pIntroText ul, #pIntroText ol, #pContentTables ul, #pContentTables ol,
         #pClosingText ul, #pClosingText ol, #pTerms ul, #pTerms ol { padding-inline-start: 22px; margin-inline: 0; }
+        #pIntroText p, #pClosingText p, #pTerms p { margin: 0 0 6px; }
 
         @media print {
             .sidebar, .action-bar, #pdfActionButtons, .no-print { display: none !important; }
@@ -189,6 +190,11 @@
         .rte { border:1px solid #ced4da; border-radius:0 0 4px 4px; padding:10px; min-height:80px; background:#fff; font-size:14px; line-height:1.6; overflow-y:auto; }
         .rte:focus { outline:none; border-color:#80bdff; box-shadow:0 0 0 0.2rem rgba(0,123,255,.15); }
         .rte:empty:before { content: attr(data-placeholder); color:#adb5bd; }
+        .rte p { margin:0 0 8px; }
+        .rte h4 { margin:12px 0 6px; }
+        .rte ul, .rte ol { margin:0 0 8px; padding-right:22px; padding-left:0; }
+        .rte table { border-collapse:collapse; width:100%; }
+        .rte td { border:1px solid #dee2e6; padding:4px 6px; }
     </style>
 
     <script type="module">
@@ -288,6 +294,7 @@
         <div id="view-generator" class="view-section">
              <div class="gen-container dashboard-ui" id="editorArea">
                 <h1 style="color:var(--primary);">מחולל מסמכים</h1>
+                <div id="editingDocBanner" style="display:none; background:#fff8e1; border:1px solid #ffe082; border-radius:5px; padding:10px 15px; margin-bottom:15px; color:#7a5b00;"></div>
                 <div class="form-group" style="background:#e3f2fd; padding:15px; border-radius:5px; margin-bottom:15px;">
                     <label>בחר לקוח:</label><input type="text" list="dlClientsGen" id="inputClientName" placeholder="התחל להקליד..." onchange="fillClientFromCRM()" style="width:100%; padding:8px;">
                     <datalist id="dlClientsGen"></datalist>
